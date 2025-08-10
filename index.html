@@ -1,358 +1,520 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<title>Immersive Cosmic Background – Modular FX Playground (Fixed)</title>
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Cosmic Interactive Background – FX Lab (Single File)</title>
 <style>
-  html, body { margin:0; height:100%; overflow:hidden; background:#07090F; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
-  #app { position:fixed; inset:0; }
-  .overlay-demo {
-    position: fixed; left: 50%; top: 10px; transform: translateX(-50%);
-    padding: 10px 14px; background: rgba(10,12,20,.35); backdrop-filter: blur(6px);
-    border: 1px solid rgba(255,255,255,.08); border-radius: 12px; color: #D7E3FF;
-    font-weight: 600; letter-spacing: .2px; user-select: none; z-index: 5;
+  :root{
+    --ui-bg: rgba(10,10,14,.82);
+    --ui-fg: #e8eef8;
+    --ui-accent: #6ee7ff;
+    --ui-muted: #9aa4b2;
   }
-  .credits {
-    position: fixed; right: 10px; bottom: 8px; color: #9fb0ff; font-size: 11px;
-    background: rgba(10,12,20,.25); padding: 6px 8px; border-radius: 8px; z-index: 5;
-    border: 1px solid rgba(255,255,255,.08)
-  }
-  .lil-gui { z-index: 10 !important; }
-  #err { position:fixed; left:8px; bottom:8px; z-index:99; color:#ffb4b4; background:rgba(40,0,0,.6); border:1px solid rgba(255,120,120,.4); padding:6px 8px; border-radius:8px; display:none; font-size:12px; max-width:60ch; }
+  html,body{height:100%;margin:0;background:#06080d;color:var(--ui-fg);font:14px/1.35 system-ui,Segoe UI,Roboto,Inter,Arial}
+  /* Stack: webgl base, particles layer, ui overlay */
+  #stage{position:fixed;inset:0;overflow:hidden}
+  canvas{position:absolute;inset:0;display:block;width:100%;height:100%;}
+  #gl{z-index:0}
+  #particles{z-index:1;mix-blend-mode:screen}
+  /* Control panel */
+  #panel{position:fixed;right:16px;top:16px;z-index:3; backdrop-filter: blur(8px); background:var(--ui-bg); border:1px solid rgba(255,255,255,.08); border-radius:16px; box-shadow: 0 10px 30px rgba(0,0,0,.4);}
+  #panel header{display:flex;align-items:center;gap:.6rem; padding:.8rem 1rem; border-bottom:1px solid rgba(255,255,255,.06)}
+  #panel header h1{font-size:14px;letter-spacing:.06em;margin:0;color:#cfe7ff}
+  #panel .content{display:grid; grid-template-columns: 1fr 1fr; gap:.75rem 1rem; padding: .9rem 1rem 1rem; max-height: 80vh; overflow:auto}
+  #panel label{display:flex; align-items:center; gap:.35rem; color:var(--ui-muted)}
+  #panel input[type="range"]{width:100%}
+  #panel .row{display:contents}
+  #panel .full{grid-column:1/-1}
+  #panel select, #panel input[type="number"], #panel input[type="color"], #panel input[type="range"]{background:#0a0d14;border:1px solid rgba(255,255,255,.08);color:var(--ui-fg); border-radius:8px;padding:.25rem .4rem}
+  #panel .switch{position:relative;display:inline-flex;align-items:center;gap:.4rem;}
+  #panel .switch input{accent-color:var(--ui-accent)}
+  #panel .small{font-size:12px;color:var(--ui-muted)}
+  #footer{position:fixed;left:16px;bottom:16px;z-index:2;color:#9fb4cc;background:rgba(10,12,16,.5);padding:.4rem .6rem;border-radius:8px;border:1px solid rgba(255,255,255,.06)}
+  button{cursor:pointer;background:#0e131d;border:1px solid rgba(255,255,255,.12);color:var(--ui-fg);padding:.35rem .65rem;border-radius:10px}
+  button:hover{border-color:rgba(255,255,255,.25)}
+  #presets{display:flex; gap:.4rem; flex-wrap:wrap}
+  .tag{font-size:11px;padding:.15rem .4rem;border:1px solid rgba(255,255,255,.12);border-radius:999px;cursor:pointer;background:#0b0f18}
+  .tag:hover{border-color:rgba(255,255,255,.28)}
+  @media(max-width:980px){#panel{left:16px;right:16px}}
 </style>
 </head>
 <body>
-  <div id="app"></div>
-  <div class="overlay-demo">Your UI/Scene elements go here — background stays strong & reactive</div>
-  <div class="credits">Immersive FX Playground • WASD/Drag/Touch to stir the cosmos</div>
-  <div id="err"></div>
+  <div id="stage">
+    <canvas id="gl"></canvas>
+    <canvas id="particles"></canvas>
+  </div>
+  <aside id="panel" aria-label="FX Controls">
+    <header>
+      <h1>Cosmic FX Lab</h1>
+      <div id="presets"></div>
+      <div style="margin-left:auto;display:flex;gap:.4rem">
+        <button id="savePreset" title="Save current knobs as preset">Save</button>
+        <button id="export" title="Export lightweight background config">Export</button>
+      </div>
+    </header>
+    <div class="content" id="controls">
+      <!-- Toggles -->
+      <div class="row full"><label class="switch"><input type="checkbox" id="enableParticles" checked/>Particles</label> <label class="switch"><input type="checkbox" id="enableNebula" checked/>Nebula</label> <label class="switch"><input type="checkbox" id="enableDistort"/>Distort</label> <label class="switch"><input type="checkbox" id="enableFlares"/>Flares</label></div>
 
-<script type="module">
-/* ======= SAFETY NET: quick error overlay ======= */
-const errBox = document.getElementById('err');
-window.addEventListener('error', (e)=>{ errBox.style.display='block'; errBox.textContent = (e?.error?.message||e.message||'Unknown error'); });
-window.addEventListener('unhandledrejection', (e)=>{ errBox.style.display='block'; errBox.textContent = (e?.reason?.message||String(e.reason)); });
+      <!-- Blend + opacity -->
+      <label>Blend</label>
+      <select id="blendMode">
+        <option value="screen" selected>screen</option>
+        <option value="lighter">lighter</option>
+        <option value="overlay">overlay</option>
+        <option value="normal">normal</option>
+        <option value="color-dodge">color-dodge</option>
+      </select>
+      <label>Layer Opacity</label>
+      <input id="layerOpacity" type="range" min="0" max="1" step="0.01" value="0.9"/>
 
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js";
-import { EffectComposer } from "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/postprocessing/EffectComposer.js";
-import { RenderPass } from "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/postprocessing/RenderPass.js";
-import { UnrealBloomPass } from "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/postprocessing/UnrealBloomPass.js";
-import { ShaderPass } from "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/postprocessing/ShaderPass.js";
-import GUI from "https://cdn.jsdelivr.net/npm/lil-gui@0.19/+esm";
+      <!-- Particles -->
+      <label>Particles</label><div class="small">swarm count / size</div>
+      <input id="particleCount" type="range" min="256" max="8000" step="64" value="2400"/>
+      <input id="particleSize" type="range" min="0.8" max="4" step="0.1" value="1.6"/>
 
-/* ======= Globals declared BEFORE handlers (avoid TDZ) ======= */
-const app = document.getElementById('app');
-const DPR = Math.min(window.devicePixelRatio || 1, 2.0);
-const renderer = new THREE.WebGLRenderer({ antialias:false, powerPreference:"high-performance", alpha:true, premultipliedAlpha:false });
-renderer.setPixelRatio(DPR);
-renderer.setSize(innerWidth, innerHeight);
-renderer.autoClear = false;
-app.appendChild(renderer.domElement);
+      <label>Physics</label><div class="small">attract/repel & noise</div>
+      <input id="attractStrength" type="range" min="-500" max="500" step="1" value="120"/>
+      <input id="noiseStrength" type="range" min="0" max="400" step="1" value="120"/>
 
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 2000);
-camera.position.set(0,0,6);
+      <label>Flow Speed</label>
+      <input id="flowSpeed" type="range" min="0" max="3" step="0.01" value="1.15"/>
 
-const clock = new THREE.Clock();
-const pointer = { x:0, y:0, down:false, speed:0, lastX:0, lastY:0, swirl:0 };
-const raycaster = new THREE.Raycaster();
-const planeForRay = new THREE.Plane(new THREE.Vector3(0,0,1), 0);
+      <label>Particle Color A</label>
+      <input id="pColorA" type="color" value="#66ccff"/>
+      <label>Particle Color B</label>
+      <input id="pColorB" type="color" value="#ff66cc"/>
 
-let composer = null;
-let bloomPass = null;
-let distortionPass = null;
-let nebulaLayer = null;
-let fogLayer = null;
-let particles = null;
+      <!-- Nebula / Smoke (shader) -->
+      <label>Nebula Scale</label>
+      <input id="nebulaScale" type="range" min="0.5" max="6" step="0.01" value="2.2"/>
+      <label>Nebula Speed</label>
+      <input id="nebulaSpeed" type="range" min="0" max="2" step="0.01" value="0.6"/>
+      <label>Nebula Intensity</label>
+      <input id="nebulaIntensity" type="range" min="0" max="2.5" step="0.01" value="1.1"/>
+      <label>Color 1</label>
+      <input id="nColor1" type="color" value="#0a1a3a"/>
+      <label>Color 2</label>
+      <input id="nColor2" type="color" value="#2a0088"/>
+      <label>Color 3</label>
+      <input id="nColor3" type="color" value="#00a8ff"/>
 
-/* ======= Utils ======= */
-function setPointer(e, isTouch=false) {
-  const rect = renderer.domElement.getBoundingClientRect();
-  const cx = isTouch ? e.touches[0].clientX : e.clientX;
-  const cy = isTouch ? e.touches[0].clientY : e.clientY;
-  const nx = ((cx - rect.left) / rect.width) * 2 - 1;
-  const ny = -(((cy - rect.top) / rect.height) * 2 - 1);
-  const dx = nx - pointer.lastX, dy = ny - pointer.lastY;
-  pointer.speed = Math.min(Math.hypot(dx, dy) * 60, 2.5);
-  pointer.x = nx; pointer.y = ny; pointer.lastX = nx; pointer.lastY = ny;
-}
-function ndcToWorldZ0(nx, ny){
-  const origin = new THREE.Vector3();
-  raycaster.setFromCamera({x:nx, y:ny}, camera);
-  raycaster.ray.at((-raycaster.ray.origin.z)/raycaster.ray.direction.z, origin);
-  return origin;
-}
+      <!-- Distortion / Ripple -->
+      <label>Distort Radius</label>
+      <input id="distortRadius" type="range" min="0.02" max="0.6" step="0.01" value="0.22"/>
+      <label>Distort Strength</label>
+      <input id="distortStrength" type="range" min="0" max="1.2" step="0.01" value="0.35"/>
 
-/* ======= Distortion Shader Pass ======= */
-const DistortionShader = {
-  uniforms: {
-    tDiffuse: { value: null },
-    uTime: { value: 0 },
-    uPointer: { value: new THREE.Vector3(0,0,0) },
-    uSpace: { value: new THREE.Vector4(0.75,0.35,0.12,0.0) },
-    uResolution: { value: new THREE.Vector2(innerWidth, innerHeight) },
-    uChromAb: { value: 0.002 },
-    uVignette: { value: 0.25 },
-    uGrain: { value: 0.08 },
-    uEnabled: { value: 1.0 },
-    uMode: { value: 1 },
-  },
-  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.,1.); }`,
-  fragmentShader: `
-    uniform sampler2D tDiffuse; uniform vec2 uResolution; uniform float uTime;
-    uniform vec3 uPointer; uniform vec4 uSpace; uniform float uChromAb,uVignette,uGrain,uEnabled; uniform int uMode;
-    varying vec2 vUv;
-    float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
-    float noise(vec2 p){ vec2 i=floor(p), f=fract(p); float a=hash(i), b=hash(i+vec2(1,0)), c=hash(i+vec2(0,1)), d=hash(i+vec2(1,1)); vec2 u=f*f*(3.-2.*f); return mix(a,b,u.x)+ (c-a)*u.y*(1.-u.x) + (d-b)*u.x*u.y; }
-    vec2 swirl(vec2 uv, vec2 c, float s){ vec2 p=uv-c; float r=length(p); float ang=s*exp(-r*6.); float si=sin(ang), co=cos(ang); mat2 m=mat2(co,-si,si,co); return c + m*p; }
-    void main(){
-      if(uEnabled<.5){ gl_FragColor = texture2D(tDiffuse, vUv); return; }
-      vec2 uv=vUv; vec2 p=0.5*(uPointer.xy+1.0); float n=noise(uv*8.0+uTime*0.2);
-      if(uMode==1){ vec2 d=uv-p; float r=max(0.0005, dot(d,d)); vec2 dir=normalize(d + 1e-6); float warp=uSpace.x*(1.0/r)*0.002 + uSpace.y*(n-0.5)*0.015; uv -= dir*warp; }
-      if(uMode==2){ uv = swirl(uv, p, uSpace.x*2.5 + (uPointer.z>0.5?0.5:0.0)); }
-      float ripple = uSpace.z * sin( (length(uv - p))*75.0 - uTime*4.0 ) * exp(-length(uv-p)*10.0) * 0.002;
-      uv += ripple * normalize(uv - p);
-      vec2 ca=(uv-0.5)*uChromAb;
-      vec4 col; col.r=texture2D(tDiffuse, uv+ca).r; col.g=texture2D(tDiffuse, uv).g; col.b=texture2D(tDiffuse, uv-ca).b; col.a=1.;
-      float d2=distance(uv, vec2(0.5)); float vig=smoothstep(0.95, max(0.2, 0.95 - uVignette), 1.0 - d2); col.rgb*=mix(0.88,1.0,vig);
-      float g=noise(uv*uResolution.xy+uTime*60.); col.rgb += (g-0.5)*uGrain; gl_FragColor = col;
+      <!-- Flares -->
+      <label>Flares Count</label>
+      <input id="flareCount" type="range" min="0" max="40" step="1" value="8"/>
+      <label>Flare Pulse</label>
+      <input id="flarePulse" type="range" min="0" max="2" step="0.01" value="0.8"/>
+
+      <!-- Perf -->
+      <label>Resolution Scale</label>
+      <input id="resScale" type="range" min="0.5" max="1.5" step="0.01" value="1"/>
+      <label>FPS Cap</label>
+      <input id="fpsCap" type="range" min="24" max="120" step="1" value="60"/>
+
+      <div class="row full">
+        <button id="randomize">Randomize</button>
+        <button id="reset">Reset</button>
+        <span class="small" id="stats"></span>
+      </div>
+    </div>
+  </aside>
+  <div id="footer">Move mouse / touch to attract-repel & distort. Toggle modes in the panel. Works under UI layers.</div>
+
+<script>
+(() => {
+  const glCanvas = document.getElementById('gl');
+  const pCanvas = document.getElementById('particles');
+  const ctx = pCanvas.getContext('2d');
+  let dpr = Math.min(1.8, window.devicePixelRatio || 1);
+  let resScale = 1.0;
+  let fpsTarget = 60;
+  let blendMode = 'screen';
+  let running = true;
+
+  const UI = id => document.getElementById(id);
+  const state = {
+    enableParticles: true,
+    enableNebula: true,
+    enableDistort: false,
+    enableFlares: false,
+    layerOpacity: 0.9,
+    // particles
+    particleCount: 2400,
+    particleSize: 1.6,
+    attractStrength: 120,
+    noiseStrength: 120,
+    flowSpeed: 1.15,
+    pColorA: '#66ccff',
+    pColorB: '#ff66cc',
+    // nebula
+    nebulaScale: 2.2,
+    nebulaSpeed: 0.6,
+    nebulaIntensity: 1.1,
+    nColor1: '#0a1a3a',
+    nColor2: '#2a0088',
+    nColor3: '#00a8ff',
+    // distort
+    distortRadius: 0.22,
+    distortStrength: 0.35,
+    // flares
+    flareCount: 8,
+    flarePulse: 0.8,
+  };
+
+  const defaults = JSON.parse(JSON.stringify(state));
+
+  // --- Resize handling ---
+  function resize(){
+    const w = Math.floor(window.innerWidth * dpr * resScale);
+    const h = Math.floor(window.innerHeight * dpr * resScale);
+    [glCanvas,pCanvas].forEach(c=>{c.width=w;c.height=h; c.style.width='100%'; c.style.height='100%';});
+    if(gl) gl.viewport(0,0,w,h);
+  }
+  window.addEventListener('resize', resize);
+
+  // --- Input tracking ---
+  const pointer = {x:0, y:0, dx:0, dy:0, down:false};
+  function updatePointer(e){
+    const rect = pCanvas.getBoundingClientRect();
+    let x = (e.touches? e.touches[0].clientX : e.clientX) - rect.left;
+    let y = (e.touches? e.touches[0].clientY : e.clientY) - rect.top;
+    x *= dpr * resScale; y *= dpr * resScale;
+    pointer.dx = x - pointer.x; pointer.dy = y - pointer.y;
+    pointer.x = x; pointer.y = y;
+  }
+  window.addEventListener('mousemove', updatePointer, {passive:true});
+  window.addEventListener('touchmove', updatePointer, {passive:true});
+  window.addEventListener('mousedown', ()=>pointer.down=true);
+  window.addEventListener('mouseup', ()=>pointer.down=false);
+  window.addEventListener('touchstart', e=>{pointer.down=true; updatePointer(e);},{passive:true});
+  window.addEventListener('touchend', ()=>pointer.down=false);
+
+  // --- Particles (CPU 2D, fast) ---
+  let particles = [];
+  let flowT = 0;
+  function rand(a=0,b=1){return a + Math.random()*(b-a)}
+  function h2rgb(h){
+    const r = parseInt(h.slice(1,3),16), g=parseInt(h.slice(3,5),16), b=parseInt(h.slice(5,7),16);
+    return [r,g,b];
+  }
+  const pColA = {rgb:[0,0,0]};
+  const pColB = {rgb:[0,0,0]};
+  function lerp(a,b,t){return a + (b-a)*t}
+  function makeParticles(n){
+    particles = new Array(n).fill(0).map(()=>({
+      x: rand(0,pCanvas.width), y: rand(0,pCanvas.height),
+      vx: rand(-0.2,0.2), vy: rand(-0.2,0.2),
+      life: rand(0,1)
+    }));
+  }
+  function noise2D(x,y,t){
+    // Simple, cheap hash-noise; good enough for flow wiggle
+    const s = Math.sin(x*0.013 + y*0.011 + t*0.8)*43758.5453;
+    return s - Math.floor(s);
+  }
+  function stepParticles(dt){
+    const {attractStrength, noiseStrength, flowSpeed, particleSize} = state;
+    const ax = pointer.x, ay = pointer.y;
+    const attract = attractStrength * 0.00015;
+    const noiseK = noiseStrength * 0.7;
+    flowT += dt * flowSpeed;
+    const w = pCanvas.width, h = pCanvas.height;
+
+    for(let i=0;i<particles.length;i++){
+      const p=particles[i];
+      // inverse-square attraction/repulsion
+      const dx = ax - p.x, dy = ay - p.y;
+      const rsq = Math.max(dx*dx + dy*dy, 50);
+      const f = attract / rsq * (pointer.down? 3.5 : 1.0);
+      p.vx += dx*f; p.vy += dy*f;
+
+      // curl-ish noise flow
+      const ang = noise2D(p.x*0.008, p.y*0.008, flowT)*Math.PI*2;
+      p.vx += Math.cos(ang)*0.04*noiseK*dt;
+      p.vy += Math.sin(ang)*0.04*noiseK*dt;
+
+      // velocity damping
+      p.vx *= 0.985; p.vy *= 0.985;
+
+      p.x += p.vx; p.y += p.vy;
+      // wrap
+      if(p.x<0) p.x+=w; if(p.x>=w) p.x-=w;
+      if(p.y<0) p.y+=h; if(p.y>=h) p.y-=h;
+      p.life += 0.003 + (p.vx*p.vx+p.vy*p.vy)*0.0005;
+      if(p.life>1) p.life=0;
     }
-  `
-};
 
-/* ======= Layer base & implementations (same as before) ======= */
-class Layer{ constructor(name){ this.name=name; this.enabled=true; } addTo(){} update(){} onResize(){} setEnabled(v){ this.enabled=v; } dispose(){} }
-/* Nebula */
-class NebulaLayer extends Layer{
-  constructor(){ super("Nebula");
-    const geo=new THREE.PlaneGeometry(2,2);
-    this.uniforms={ uTime:{value:0}, uColorA:{value:new THREE.Color("#6cc6ff")}, uColorB:{value:new THREE.Color("#d17bff")}, uColorC:{value:new THREE.Color("#ffe59e")},
-      uIntensity:{value:1.1}, uContrast:{value:1.15}, uSpeed:{value:0.12}, uScale:{value:1.8}, uOpacity:{value:0.95}, uPointer:{value:new THREE.Vector3()}, uLightScatter:{value:0.45}, uBlendMode:{value:1} };
-    const mat=new THREE.ShaderMaterial({ uniforms:this.uniforms, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending });
-    mat.vertexShader=`varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position,1.0); }`;
-    mat.fragmentShader=`
-      varying vec2 vUv; uniform float uTime,uIntensity,uContrast,uSpeed,uScale,uOpacity,uLightScatter; uniform vec3 uPointer,uColorA,uColorB,uColorC; uniform int uBlendMode;
-      float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453123); }
-      float noise(vec2 p){ vec2 i=floor(p), f=fract(p); float a=hash(i), b=hash(i+vec2(1,0)), c=hash(i+vec2(0,1)), d=hash(i+vec2(1,1)); vec2 u=f*f*(3.-2.*f); return mix(a,b,u.x)+ (c-a)*u.y*(1.-u.x) + (d-b)*u.x*u.y; }
-      float fbm(vec2 p){ float v=0., a=0.5; for(int i=0;i<6;i++){ v+=a*noise(p); p*=2.03; a*=0.5; } return v; }
-      vec3 blendScreen(vec3 a, vec3 b){ return 1. - (1.-a)*(1.-b); }
-      void main(){
-        vec2 uv=vUv*uScale; float t=uTime*uSpeed; vec2 p=uv+vec2(uPointer.x,-uPointer.y)*0.15;
-        float n=fbm(p+t); float m=fbm(p*1.7 - t*0.6 + vec2(5.3,2.1));
-        float c=pow(smoothstep(0.2,1.2,(n*0.6+m*0.8)*uIntensity), uContrast);
-        float d=distance(vUv, vec2(0.5))*2.; float scatter=exp(-d*3.)*uLightScatter;
-        vec3 base = mix(uColorA,uColorB,n); base = mix(base,uColorC,m*0.7); base *= c + scatter;
-        vec3 col = (uBlendMode==2) ? blendScreen(base, vec3(0.)) : base;
-        gl_FragColor = vec4(col, uOpacity);
-      }`;
-    this.mesh=new THREE.Mesh(geo, mat); this.mesh.frustumCulled=false;
+    // draw
+    ctx.globalCompositeOperation = blendMode;
+    ctx.globalAlpha = state.layerOpacity;
+    ctx.clearRect(0,0,w,h);
+
+    const [r1,g1,b1]=pColA.rgb, [r2,g2,b2]=pColB.rgb;
+    ctx.beginPath();
+    for(let i=0;i<particles.length;i++){
+      const p=particles[i];
+      const t = p.life;
+      const r = Math.floor(lerp(r1,r2,t));
+      const g = Math.floor(lerp(g1,g2,t));
+      const b = Math.floor(lerp(b1,b2,t));
+      ctx.fillStyle = `rgba(${r},${g},${b},0.9)`;
+      ctx.moveTo(p.x, p.y);
+      ctx.arc(p.x, p.y, particleSize*dpr, 0, Math.PI*2);
+    }
+    ctx.fill();
+
+    if(state.enableFlares){ drawFlares(dt); }
   }
-  addTo(s){ s.add(this.mesh); }
-  update(dt,t){ this.uniforms.uTime.value=t; this.uniforms.uPointer.value.set(pointer.x,pointer.y,pointer.down?1:0); }
-}
-/* Fog */
-class FogLayer extends Layer{
-  constructor(){ super("Fog");
-    const geo=new THREE.PlaneGeometry(2,2);
-    this.uniforms={ uTime:{value:0}, uPointer:{value:new THREE.Vector3()}, uColor:{value:new THREE.Color("#7aa3ff")},
-      uDensity:{value:0.6}, uSteps:{value:24}, uThickness:{value:1.0}, uAniso:{value:0.25}, uOpacity:{value:0.6}, uNoiseScale:{value:1.6}, uSpeed:{value:0.08} };
-    const mat=new THREE.ShaderMaterial({ uniforms:this.uniforms, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending });
-    mat.vertexShader=`varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position,1.0); }`;
-    mat.fragmentShader=`
-      varying vec2 vUv; uniform float uTime,uDensity,uThickness,uAniso,uOpacity,uNoiseScale,uSpeed; uniform int uSteps; uniform vec3 uPointer; uniform vec3 uColor;
-      float hash(vec3 p){ return fract(sin(dot(p, vec3(127.1,311.7,74.7))) * 43758.5453); }
-      float noise(vec3 x){ vec3 p=floor(x), f=fract(x); float a=hash(p),b=hash(p+vec3(1,0,0)),c=hash(p+vec3(0,1,0)),d=hash(p+vec3(1,1,0)), e=hash(p+vec3(0,0,1)),f1=hash(p+vec3(1,0,1)),g=hash(p+vec3(0,1,1)),h=hash(p+vec3(1,1,1)); vec3 u=f*f*(3.-2.*f); return mix(mix(mix(a,b,u.x), mix(c,d,u.x), u.y), mix(mix(e,f1,u.x), mix(g,h,u.x), u.y), u.z); }
-      void main(){
-        vec2 uv=vUv*2.-1.; vec3 ro=vec3(0.,0.,-2.); vec3 rd=normalize(vec3(uv,1.5));
-        float t=uTime*uSpeed; vec3 p=ro; float trans=1.; vec3 accum=vec3(0.); float stepLen=uThickness/float(max(uSteps,1));
-        for(int i=0;i<64;i++){ if(i>=uSteps) break;
-          float d=noise(p*uNoiseScale + vec3(0.,0.,t))*uDensity;
-          vec3 L=normalize(vec3(uPointer.x,uPointer.y,1.)); float mu=dot(rd,L);
-          float phase=(1.-uAniso*uAniso)/pow(1.+uAniso*uAniso - 2.*uAniso*mu, 1.5);
-          vec3 col=uColor * d * phase * 0.35; accum += trans * col * stepLen; trans *= exp(-d*stepLen*2.); p += rd * stepLen; if(trans<0.01) break;
-        }
-        gl_FragColor = vec4(accum, uOpacity);
-      }`;
-    this.mesh=new THREE.Mesh(geo, mat); this.mesh.frustumCulled=false;
+
+  // --- Lens flares / glow (2D additive) ---
+  const flares = [];
+  function initFlares(){
+    flares.length = 0;
+    const n = state.flareCount|0;
+    for(let i=0;i<n;i++){
+      flares.push({x: rand(0,pCanvas.width), y: rand(0,pCanvas.height), r: rand(40,240)*dpr, phase: rand(0,Math.PI*2)});
+    }
   }
-  addTo(s){ s.add(this.mesh); }
-  update(dt,t){ this.uniforms.uTime.value=t; this.uniforms.uPointer.value.set(pointer.x,pointer.y,pointer.down?1:0); }
-}
-/* Particles */
-class ParticleLayer extends Layer{
-  constructor({count=90000}={}){ super("Particles");
-    const positions=new Float32Array(count*3); const seeds=new Float32Array(count*4);
-    for(let i=0;i<count;i++){ positions[i*3+0]=(Math.random()*2-1)*3.; positions[i*3+1]=(Math.random()*2-1)*2.; positions[i*3+2]=(Math.random()*2-1)*0.2; seeds[i*4+0]=Math.random()*1000.; seeds[i*4+1]=Math.random()*1000.; seeds[i*4+2]=Math.random()*1000.; seeds[i*4+3]=Math.random(); }
-    const geo=new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(positions,3)); geo.setAttribute('aSeed', new THREE.BufferAttribute(seeds,4));
-    this.uniforms={ uTime:{value:0}, uPointerWorld:{value:new THREE.Vector3()}, uPointer:{value:new THREE.Vector3()}, uColor1:{value:new THREE.Color("#80d0ff")},
-      uColor2:{value:new THREE.Color("#ff86ff")}, uColor3:{value:new THREE.Color("#ffd27e")}, uSize:{value:1.6}, uOpacity:{value:0.95}, uNoiseAmp:{value:1.2},
-      uNoiseFreq:{value:0.8}, uSpeed:{value:1.0}, uAttract:{value:-0.45}, uSwirl:{value:0.35} };
-    const mat=new THREE.ShaderMaterial({ uniforms:this.uniforms, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending });
-    mat.vertexShader=`
-      uniform float uTime,uNoiseAmp,uNoiseFreq,uSpeed,uAttract,uSwirl,uSize; uniform vec3 uPointerWorld; attribute vec4 aSeed;
-      varying float vMix; float hash(vec3 p){ return fract(sin(dot(p, vec3(127.1,311.7,74.7))) * 43758.5453); }
-      float noise(vec3 x){ vec3 p=floor(x), f=fract(x); float a=hash(p),b=hash(p+vec3(1,0,0)),c=hash(p+vec3(0,1,0)),d=hash(p+vec3(1,1,0)), e=hash(p+vec3(0,0,1)),f1=hash(p+vec3(1,0,1)),g=hash(p+vec3(0,1,1)),h=hash(p+vec3(1,1,1)); vec3 u=f*f*(3.-2.*f); return mix(mix(mix(a,b,u.x), mix(c,d,u.x), u.y), mix(mix(e,f1,u.x), mix(g,h,u.x), u.y), u.z); }
-      vec3 curl(vec3 p){ float e=0.1; float n1=noise(p+vec3(0,e,0)) - noise(p-vec3(0,e,0)); float n2=noise(p+vec3(0,0,e)) - noise(p-vec3(0,0,e)); float n3=noise(p+vec3(e,0,0)) - noise(p-vec3(e,0,0)); return normalize(vec3(n2-n3, n3-n1, n1-n2)); }
-      void main(){ vec3 pos=position; float t=uTime*0.2*uSpeed; vec3 flow=curl(vec3(pos*uNoiseFreq + aSeed.xyz + t))*uNoiseAmp; pos+=flow;
-        vec3 dir=uPointerWorld - pos; float dist=max(0.025, length(dir)); vec3 f=normalize(dir) * uAttract / (dist*dist);
-        vec3 tang=normalize(cross(vec3(0.,0.,1.), dir + 1e-4)); f += tang * uSwirl / max(0.4, dist); pos += f;
-        vMix = fract(aSeed.x + t * 0.1);
-        vec4 mv=modelViewMatrix*vec4(pos,1.0); gl_Position=projectionMatrix*mv; gl_PointSize=(uSize + aSeed.w*1.5) * (300.0 / -mv.z);
-      }`;
-    mat.fragmentShader=`
-      uniform vec3 uColor1,uColor2,uColor3; uniform float uOpacity; varying float vMix;
-      void main(){ vec2 uv=gl_PointCoord-0.5; float d=dot(uv,uv); float alpha=smoothstep(0.25,0.0,d)*uOpacity; vec3 c=mix(uColor1,uColor2,vMix); c=mix(c,uColor3,smoothstep(0.6,1.0,vMix)); gl_FragColor=vec4(c,alpha); }`;
-    this.points=new THREE.Points(geo, mat); this.points.frustumCulled=false;
+  function drawFlares(dt){
+    const pulse = state.flarePulse;
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    for(const f of flares){
+      f.phase += dt * (0.5 + Math.random()*0.3);
+      const k = 0.6 + Math.sin(f.phase)*0.4 * pulse;
+      const grd = ctx.createRadialGradient(f.x,f.y,0,f.x,f.y,f.r*k);
+      grd.addColorStop(0,'rgba(255,255,255,0.55)');
+      grd.addColorStop(0.2,'rgba(255,200,180,0.35)');
+      grd.addColorStop(1,'rgba(255,255,255,0)');
+      ctx.fillStyle = grd;
+      ctx.beginPath(); ctx.arc(f.x,f.y,f.r*k,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
   }
-  addTo(s){ s.add(this.points); }
-  update(dt,t){ this.uniforms.uTime.value=t; const w=ndcToWorldZ0(pointer.x,pointer.y); this.uniforms.uPointerWorld.value.copy(w); this.uniforms.uPointer.value.set(pointer.x,pointer.y,pointer.down?1:0); }
-}
 
-/* ======= Build post stack AFTER everything is defined ======= */
-function buildComposer(){
-  composer = new EffectComposer(renderer);
-  const renderPass = new RenderPass(scene, camera);
-  composer.addPass(renderPass);
-  bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.9, 0.4, 0.4);
-  composer.addPass(bloomPass);
-  distortionPass = new ShaderPass(DistortionShader);
-  composer.addPass(distortionPass);
-}
+  // --- WebGL shader layer (nebula + distortion) ---
+  const gl = glCanvas.getContext('webgl', {antialias:false, depth:false, stencil:false, premultipliedAlpha:false});
+  if(!gl){ console.warn('WebGL not available'); }
 
-/* ======= Controls ======= */
-const gui = new GUI({ title:"FX Control Panel" });
-const params = {
-  background:"#07090F", clearAlpha:0.0, pixelRatio:DPR,
-  bloomStrength:0.9, bloomRadius:0.4, bloomThreshold:0.4,
-  fieldEnabled:true, fieldMode:"Magnetic", warpStrength:1.05, noiseAmp:0.35, rippleAmp:0.14, chromAb:0.0025, vignette:0.27, grain:0.07,
-  nebulaEnabled:true, nebulaIntensity:1.25, nebulaContrast:1.2, nebulaSpeed:0.15, nebulaScale:2.2, nebulaOpacity:0.95, nebulaScatter:0.55, nebulaBlend:"Add",
-  nebulaColorA:"#6cc6ff", nebulaColorB:"#d17bff", nebulaColorC:"#ffe59e",
-  fogEnabled:true, fogDensity:0.75, fogSteps:28, fogThickness:1.0, fogAniso:0.25, fogOpacity:0.65, fogNoiseScale:1.8, fogSpeed:0.1, fogColor:"#7aa3ff",
-  particlesEnabled:true, pSize:1.8, pOpacity:0.96, pNoiseAmp:1.4, pNoiseFreq:0.9, pSpeed:1.1, pAttract:-0.55, pSwirl:0.55,
-};
-function wireGUI(){
-  const gGlobal=gui.addFolder("Global");
-  gGlobal.addColor(params,"background").onChange(v=>renderer.setClearColor(new THREE.Color(v), params.clearAlpha));
-  gGlobal.add(params,"clearAlpha",0,1,0.01).onChange(v=>renderer.setClearAlpha(v));
-  gGlobal.add(params,"pixelRatio",0.5,2,0.1).onChange(v=>{ renderer.setPixelRatio(v); onResize(); });
-  const gBloom=gGlobal.addFolder("Bloom");
-  gBloom.add(params,"bloomStrength",0,2,0.01).onChange(v=>bloomPass.strength=v);
-  gBloom.add(params,"bloomRadius",0,1.5,0.01).onChange(v=>bloomPass.radius=v);
-  gBloom.add(params,"bloomThreshold",0,1,0.01).onChange(v=>bloomPass.threshold=v);
+  const vsrc = `
+  attribute vec2 p; varying vec2 uv; void main(){ uv = (p+1.0)*0.5; gl_Position = vec4(p,0.,1.); }
+  `;
+  const fsrc = `
+  precision highp float; varying vec2 uv; uniform vec2 res; uniform float time; uniform vec2 pointer; 
+  uniform float scale; uniform float speed; uniform float intensity; 
+  uniform vec3 c1; uniform vec3 c2; uniform vec3 c3; uniform float distortR; uniform float distortS; uniform bool enableNebula; uniform bool enableDistort;
 
-  const gField=gui.addFolder("Field Distortion");
-  gField.add(params,"fieldEnabled").onChange(v=>distortionPass.uniforms.uEnabled.value=v?1:0);
-  gField.add(params,"fieldMode",["Magnetic","Swirl"]).onChange(v=>distortionPass.uniforms.uMode.value=(v==="Magnetic")?1:2);
-  gField.add(params,"warpStrength",0,2.5,0.01).onChange(v=>distortionPass.uniforms.uSpace.value.x=v);
-  gField.add(params,"noiseAmp",0,1,0.01).onChange(v=>distortionPass.uniforms.uSpace.value.y=v);
-  gField.add(params,"rippleAmp",0,1,0.01).onChange(v=>distortionPass.uniforms.uSpace.value.z=v);
-  gField.add(params,"chromAb",0,0.01,0.0005).onChange(v=>distortionPass.uniforms.uChromAb.value=v);
-  gField.add(params,"vignette",0,0.8,0.01).onChange(v=>distortionPass.uniforms.uVignette.value=v);
-  gField.add(params,"grain",0,0.2,0.005).onChange(v=>distortionPass.uniforms.uGrain.value=v);
+  // iq-style hash
+  float hash(vec3 p){ return fract(sin(dot(p, vec3(127.1,311.7, 74.7)))*43758.5453); }
+  float noise(vec3 p){ vec3 i=floor(p); vec3 f=fract(p);
+    float n=0.0; for(int dx=0; dx<2; dx++) for(int dy=0; dy<2; dy++) for(int dz=0; dz<2; dz++){
+      vec3 g = vec3(float(dx),float(dy),float(dz));
+      float w = dot(f-g, f-g); w = max(0.0, 1.0 - w*1.6);
+      n += hash(i+g) * w;
+    }
+    return n;
+  }
 
-  const gNebula=gui.addFolder("Nebula"); gNebula.add(params,"nebulaEnabled").onChange(v=>nebulaLayer.setEnabled(v));
-  gNebula.add(params,"nebulaIntensity",0.2,2.5,0.01).onChange(v=>nebulaLayer.uniforms.uIntensity.value=v);
-  gNebula.add(params,"nebulaContrast",0.5,2,0.01).onChange(v=>nebulaLayer.uniforms.uContrast.value=v);
-  gNebula.add(params,"nebulaSpeed",0,1,0.005).onChange(v=>nebulaLayer.uniforms.uSpeed.value=v);
-  gNebula.add(params,"nebulaScale",0.2,4,0.01).onChange(v=>nebulaLayer.uniforms.uScale.value=v);
-  gNebula.add(params,"nebulaOpacity",0,1,0.01).onChange(v=>nebulaLayer.uniforms.uOpacity.value=v);
-  gNebula.add(params,"nebulaScatter",0,1,0.01).onChange(v=>nebulaLayer.uniforms.uLightScatter.value=v);
-  gNebula.add(params,"nebulaBlend",["Normal","Add","Screen"]).onChange(v=>{
-    nebulaLayer.uniforms.uBlendMode.value=(v==="Normal")?0:(v==="Add")?1:2;
-    nebulaLayer.mesh.material.blending=(v==="Normal")?THREE.NormalBlending:THREE.AdditiveBlending;
+  vec2 distort(vec2 p){
+    vec2 d = p - pointer/res; float r = length(d);
+    float m = smoothstep(distortR, 0.0, r) * distortS; // pull-in refraction
+    vec2 dir = normalize(d + 1e-5);
+    return p - dir * m * 0.25 * (0.5 + sin(time*1.7)*0.5);
+  }
+
+  void main(){
+    vec2 p = uv; if(enableDistort){ p = distort(p); }
+    vec2 q = (p*res)/min(res.x,res.y);
+    float t = time*speed;
+    float ns = 0.0;
+    if(enableNebula){
+      // multi-octave soft noise for fog/nebula
+      for(int i=0;i<5;i++){
+        float k = pow(2.0,float(i));
+        ns += noise(vec3(q*scale/k, t*0.2 + float(i)*13.7)) / k;
+      }
+    }
+    ns = clamp(ns*intensity, 0.0, 1.0);
+
+    vec3 col = mix(c1, c2, ns);
+    col = mix(col, c3, smoothstep(0.6,1.0,ns));
+
+    gl_FragColor = vec4(col, 1.0);
+  }
+  `;
+
+  function compile(type, src){ const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)){ throw gl.getShaderInfoLog(s);} return s; }
+  let prog, vao, aPos, u = {};
+  function initGL(){
+    if(!gl) return;
+    const vs = compile(gl.VERTEX_SHADER, vsrc);
+    const fs = compile(gl.FRAGMENT_SHADER, fsrc);
+    prog = gl.createProgram(); gl.attachShader(prog,vs); gl.attachShader(prog,fs); gl.linkProgram(prog);
+    if(!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw gl.getProgramInfoLog(prog);
+    gl.useProgram(prog);
+    aPos = gl.getAttribLocation(prog,'p');
+    const quad = new Float32Array([-1,-1, 1,-1, -1,1, 1,1]);
+    const vbo = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vbo); gl.bufferData(gl.ARRAY_BUFFER, quad, gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(aPos); gl.vertexAttribPointer(aPos,2,gl.FLOAT,false,0,0);
+    const loc = n=> gl.getUniformLocation(prog,n);
+    u.res=loc('res'); u.time=loc('time'); u.pointer=loc('pointer');
+    u.scale=loc('scale'); u.speed=loc('speed'); u.intensity=loc('intensity');
+    u.c1=loc('c1'); u.c2=loc('c2'); u.c3=loc('c3'); u.distortR=loc('distortR'); u.distortS=loc('distortS');
+    u.enableNebula=loc('enableNebula'); u.enableDistort=loc('enableDistort');
+  }
+
+  // --- Controls wiring ---
+  function syncColors(){ pColA.rgb = h2rgb(state.pColorA); pColB.rgb = h2rgb(state.pColorB); }
+  function applyBlend(){ blendMode = UI('blendMode').value; ctx.globalCompositeOperation = blendMode; }
+
+  function bind(id, key, on){ const el = UI(id); const set = v=>{ state[key] = (typeof state[key]==='number')? +v : (typeof state[key]==='boolean'? !!v : v); if(on) on(); }; set(el.type==='checkbox'? el.checked : el.value); el.addEventListener('input', e=> set(el.type==='checkbox'? el.checked : el.value)); }
+
+  bind('enableParticles','enableParticles');
+  bind('enableNebula','enableNebula');
+  bind('enableDistort','enableDistort');
+  bind('enableFlares','enableFlares', initFlares);
+  bind('layerOpacity','layerOpacity');
+  bind('particleCount','particleCount', ()=> makeParticles(state.particleCount|0));
+  bind('particleSize','particleSize');
+  bind('attractStrength','attractStrength');
+  bind('noiseStrength','noiseStrength');
+  bind('flowSpeed','flowSpeed');
+  bind('pColorA','pColorA', syncColors);
+  bind('pColorB','pColorB', syncColors);
+  bind('nebulaScale','nebulaScale');
+  bind('nebulaSpeed','nebulaSpeed');
+  bind('nebulaIntensity','nebulaIntensity');
+  bind('nColor1','nColor1');
+  bind('nColor2','nColor2');
+  bind('nColor3','nColor3');
+  bind('distortRadius','distortRadius');
+  bind('distortStrength','distortStrength');
+  bind('flareCount','flareCount', initFlares);
+  bind('flarePulse','flarePulse');
+
+  UI('blendMode').addEventListener('change', applyBlend);
+
+  UI('resScale').addEventListener('input', e=>{ resScale = +e.target.value; resize(); makeParticles(state.particleCount|0); initFlares(); });
+  UI('fpsCap').addEventListener('input', e=>{ fpsTarget = +e.target.value; });
+
+  UI('randomize').addEventListener('click', ()=>{
+    const r = () => Math.random();
+    UI('enableNebula').checked = state.enableNebula = true;
+    UI('enableParticles').checked = state.enableParticles = true;
+    UI('nebulaScale').value = state.nebulaScale = lerp(0.8,4.5,r());
+    UI('nebulaSpeed').value = state.nebulaSpeed = lerp(0.1,1.2,r());
+    UI('nebulaIntensity').value = state.nebulaIntensity = lerp(0.6,1.8,r());
+    UI('attractStrength').value = state.attractStrength = lerp(-200,280,r());
+    UI('noiseStrength').value = state.noiseStrength = lerp(40,300,r());
+    UI('flowSpeed').value = state.flowSpeed = lerp(0.2,2.0,r());
+    UI('particleCount').value = state.particleCount = Math.floor(lerp(800,6000,r())); makeParticles(state.particleCount|0);
+    UI('particleSize').value = state.particleSize = lerp(0.9,3.2,r());
+    UI('pColorA').value = state.pColorA = `#${((r()*0xffffff)|0).toString(16).padStart(6,'0')}`;
+    UI('pColorB').value = state.pColorB = `#${((r()*0xffffff)|0).toString(16).padStart(6,'0')}`; syncColors();
+    UI('nColor1').value = state.nColor1 = `#${((r()*0xffffff)|0).toString(16).padStart(6,'0')}`;
+    UI('nColor2').value = state.nColor2 = `#${((r()*0xffffff)|0).toString(16).padStart(6,'0')}`;
+    UI('nColor3').value = state.nColor3 = `#${((r()*0xffffff)|0).toString(16).padStart(6,'0')}`;
   });
-  gNebula.addColor(params,"nebulaColorA").onChange(v=>nebulaLayer.uniforms.uColorA.value.set(v));
-  gNebula.addColor(params,"nebulaColorB").onChange(v=>nebulaLayer.uniforms.uColorB.value.set(v));
-  gNebula.addColor(params,"nebulaColorC").onChange(v=>nebulaLayer.uniforms.uColorC.value.set(v));
 
-  const gFog=gui.addFolder("Volumetric Fog");
-  gFog.add(params,"fogEnabled").onChange(v=>fogLayer.setEnabled(v));
-  gFog.addColor(params,"fogColor").onChange(v=>fogLayer.uniforms.uColor.value.set(v));
-  gFog.add(params,"fogDensity",0,2,0.01).onChange(v=>fogLayer.uniforms.uDensity.value=v);
-  gFog.add(params,"fogSteps",4,64,1).onChange(v=>fogLayer.uniforms.uSteps.value=v);
-  gFog.add(params,"fogThickness",0.2,3.5,0.01).onChange(v=>fogLayer.uniforms.uThickness.value=v);
-  gFog.add(params,"fogAniso",0,0.9,0.01).onChange(v=>fogLayer.uniforms.uAniso.value=v);
-  gFog.add(params,"fogOpacity",0,1,0.01).onChange(v=>fogLayer.uniforms.uOpacity.value=v);
-  gFog.add(params,"fogNoiseScale",0.2,4,0.01).onChange(v=>fogLayer.uniforms.uNoiseScale.value=v);
-  gFog.add(params,"fogSpeed",0,0.6,0.005).onChange(v=>fogLayer.uniforms.uSpeed.value=v);
+  UI('reset').addEventListener('click', ()=>{
+    Object.assign(state, JSON.parse(JSON.stringify(defaults)));
+    for(const k in state){ const el = UI(k); if(!el) continue; if(el.type==='checkbox') el.checked = state[k]; else el.value = state[k]; }
+    syncColors(); applyBlend(); resize(); makeParticles(state.particleCount|0); initFlares();
+  });
 
-  const gP=gui.addFolder("Particle Swarm");
-  gP.add(params,"particlesEnabled").onChange(v=>particles.setEnabled(v));
-  gP.add(params,"pSize",0.2,4,0.05).onChange(v=>particles.uniforms.uSize.value=v);
-  gP.add(params,"pOpacity",0,1,0.01).onChange(v=>particles.uniforms.uOpacity.value=v);
-  gP.add(params,"pNoiseAmp",0,3,0.01).onChange(v=>particles.uniforms.uNoiseAmp.value=v);
-  gP.add(params,"pNoiseFreq",0.1,3,0.01).onChange(v=>particles.uniforms.uNoiseFreq.value=v);
-  gP.add(params,"pSpeed",0,2.5,0.01).onChange(v=>particles.uniforms.uSpeed.value=v);
-  gP.add(params,"pAttract",-2,2,0.01).onChange(v=>particles.uniforms.uAttract.value=v);
-  gP.add(params,"pSwirl",0,2,0.01).onChange(v=>particles.uniforms.uSwirl.value=v);
-  gP.addColor(params,"pColor1").onChange(v=>particles.uniforms.uColor1.value.set(v));
-  gP.addColor(params,"pColor2").onChange(v=>particles.uniforms.uColor2.value.set(v));
-  gP.addColor(params,"pColor3").onChange(v=>particles.uniforms.uColor3.value.set(v));
-}
+  // Presets save/load
+  const presetEl = document.getElementById('presets');
+  function loadPresets(){
+    presetEl.innerHTML='';
+    const data = JSON.parse(localStorage.getItem('cosmicFxPresets')||'[]');
+    data.forEach((p,i)=>{
+      const tag = document.createElement('span'); tag.className='tag'; tag.textContent=p.name; tag.title='Click to load';
+      tag.addEventListener('click', ()=>{ Object.assign(state,p.values); for(const k in state){ const el = UI(k); if(!el) continue; if(el.type==='checkbox') el.checked = state[k]; else el.value = state[k]; } syncColors(); resize(); makeParticles(state.particleCount|0); initFlares(); });
+      presetEl.appendChild(tag);
+    });
+  }
+  UI('savePreset').addEventListener('click', ()=>{
+    const name = prompt('Preset name?'); if(!name) return;
+    const data = JSON.parse(localStorage.getItem('cosmicFxPresets')||'[]');
+    data.push({name, values: {...state}});
+    localStorage.setItem('cosmicFxPresets', JSON.stringify(data));
+    loadPresets();
+  });
+  UI('export').addEventListener('click', ()=>{
+    const cfg = {...state, resScale, fpsTarget, blendMode};
+    const blob = new Blob([JSON.stringify(cfg,null,2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href=url; a.download='cosmic-fx-config.json'; a.click(); URL.revokeObjectURL(url);
+  });
 
-/* ======= Init everything in safe order ======= */
-function init(){
-  // layers first
-  nebulaLayer = new NebulaLayer(); nebulaLayer.addTo(scene);
-  particles   = new ParticleLayer({count:90000}); particles.addTo(scene);
-  fogLayer    = new FogLayer(); fogLayer.addTo(scene);
+  // --- Animation loop ---
+  let last=performance.now(), acc=0, frameInterval=1000/60; // logic at 60hz; render capped separately
+  let lastRender=0;
 
-  // post stack
-  buildComposer();
+  function tick(now){
+    if(!running) return;
+    const dt=(now-last)/1000; last=now; acc += dt;
 
-  // initial renderer state
-  renderer.setClearColor(new THREE.Color(params.background), params.clearAlpha);
-  bloomPass.strength=params.bloomStrength; bloomPass.radius=params.bloomRadius; bloomPass.threshold=params.bloomThreshold;
-  distortionPass.uniforms.uChromAb.value=params.chromAb;
-  distortionPass.uniforms.uVignette.value=params.vignette;
-  distortionPass.uniforms.uGrain.value=params.grain;
-  distortionPass.uniforms.uSpace.value.set(params.warpStrength, params.noiseAmp, params.rippleAmp, 0);
-  distortionPass.uniforms.uEnabled.value = params.fieldEnabled ? 1 : 0;
-  distortionPass.uniforms.uMode.value = (params.fieldMode==="Magnetic")?1:2;
+    // Update logic in fixed steps (improves stability)
+    const logicStep=1/60; while(acc>=logicStep){ if(state.enableParticles) stepParticles(logicStep); acc-=logicStep; }
 
-  // input AFTER everything exists
-  addInputs();
-  wireGUI();
+    // Render GL at fps cap
+    if(now-lastRender >= (1000/fpsTarget)){
+      drawGL(now/1000);
+      lastRender = now;
+      // simple stats
+      UI('stats').textContent = `${pCanvas.width}x${pCanvas.height}@${fpsTarget}fps • ${state.particleCount|0} px`;
+    }
+    requestAnimationFrame(tick);
+  }
 
-  // render loop
-  animate();
-}
-function addInputs(){
-  window.addEventListener("pointermove", (e)=> setPointer(e));
-  window.addEventListener("pointerdown", (e)=> { pointer.down=true; setPointer(e); });
-  window.addEventListener("pointerup", ()=> { pointer.down=false; });
-  window.addEventListener("touchstart",(e)=>{ pointer.down=true; setPointer(e,true); }, {passive:true});
-  window.addEventListener("touchmove", (e)=> setPointer(e,true), {passive:true});
-  window.addEventListener("touchend", ()=> { pointer.down=false; });
+  function drawGL(t){
+    if(!gl) return;
+    gl.useProgram(prog);
+    gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
+    gl.viewport(0,0,gl.drawingBufferWidth, gl.drawingBufferHeight);
 
-  // resize added LAST (so composer/layers exist)
-  window.addEventListener("resize", onResize);
-}
-function onResize(){
-  const w=innerWidth, h=innerHeight;
-  camera.aspect=w/h; camera.updateProjectionMatrix();
-  renderer.setSize(w,h);
-  if (composer) composer.setSize(w,h);
-  if (bloomPass) bloomPass.setSize(w,h);
-  if (distortionPass) distortionPass.uniforms.uResolution.value.set(w,h);
-}
-function animate(){
-  const dt=Math.min(0.033, clock.getDelta());
-  const t=clock.elapsedTime;
-  const pointerVec=new THREE.Vector3(pointer.x,pointer.y,pointer.down?1:0);
-  distortionPass.uniforms.uTime.value=t; distortionPass.uniforms.uPointer.value.copy(pointerVec);
+    gl.uniform2f(u.res, gl.drawingBufferWidth, gl.drawingBufferHeight);
+    gl.uniform1f(u.time, t);
+    gl.uniform2f(u.pointer, pointer.x, gl.drawingBufferHeight-pointer.y);
 
-  nebulaLayer.mesh.visible = nebulaLayer.enabled; if (nebulaLayer.enabled) nebulaLayer.update(dt,t);
-  particles.points.visible = particles.enabled;   if (particles.enabled)   particles.update(dt,t);
-  fogLayer.mesh.visible    = fogLayer.enabled;    if (fogLayer.enabled)    fogLayer.update(dt,t);
+    gl.uniform1f(u.scale, state.nebulaScale);
+    gl.uniform1f(u.speed, state.nebulaSpeed);
+    gl.uniform1f(u.intensity, state.nebulaIntensity);
 
-  renderer.clear();
-  composer.render();
-  requestAnimationFrame(animate);
-}
+    const nc1 = h2rgb(state.nColor1), nc2=h2rgb(state.nColor2), nc3=h2rgb(state.nColor3);
+    gl.uniform3f(u.c1, nc1[0]/255, nc1[1]/255, nc1[2]/255);
+    gl.uniform3f(u.c2, nc2[0]/255, nc2[1]/255, nc2[2]/255);
+    gl.uniform3f(u.c3, nc3[0]/255, nc3[1]/255, nc3[2]/255);
 
-init();
+    gl.uniform1f(u.distortR, state.distortRadius);
+    gl.uniform1f(u.distortS, state.distortStrength);
+
+    gl.uniform1i(u.enableNebula, state.enableNebula?1:0);
+    gl.uniform1i(u.enableDistort, state.enableDistort?1:0);
+
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+
+  // --- Boot ---
+  initGL(); applyBlend(); syncColors();
+  function boot(){ resize(); makeParticles(state.particleCount|0); initFlares(); loadPresets(); requestAnimationFrame(tick); }
+  boot();
+
+  // Expose a tiny API for future lightweight embed
+  window.CosmicFX = {
+    set(k,v){ if(k in state){ state[k]=v; const el=UI(k); if(el){ if(el.type==='checkbox') el.checked=v; else el.value=v; } if(k==='particleCount') makeParticles(v|0); if(k==='pColorA'||k==='pColorB') syncColors(); if(k==='flareCount') initFlares(); } },
+    get(k){ return state[k]; },
+    export(){ return {...state, resScale, fpsTarget, blendMode}; },
+  };
+})();
 </script>
 </body>
 </html>

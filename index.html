@@ -1,770 +1,358 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>Immersive Cosmic Background – Modular FX Playground</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
-  <style>
-    html, body {
-      margin: 0; height: 100%; overflow: hidden; background: #07090F;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-    }
-    #app { position: fixed; inset: 0; }
-    /* Optional overlay area to test UI stacking on top of the FX background */
-    .overlay-demo {
-      position: fixed; left: 50%; top: 10px; transform: translateX(-50%);
-      padding: 10px 14px; background: rgba(10,12,20,.35); backdrop-filter: blur(6px);
-      border: 1px solid rgba(255,255,255,.08); border-radius: 12px; color: #D7E3FF;
-      font-weight: 600; letter-spacing: .2px; user-select: none; z-index: 5;
-    }
-    .credits {
-      position: fixed; right: 10px; bottom: 8px; color: #9fb0ff; font-size: 11px;
-      background: rgba(10,12,20,.25); padding: 6px 8px; border-radius: 8px; z-index: 5;
-      border: 1px solid rgba(255,255,255,.08)
-    }
-    /* lil-gui position */
-    .lil-gui { z-index: 10 !important; }
-  </style>
+<meta charset="utf-8" />
+<title>Immersive Cosmic Background – Modular FX Playground (Fixed)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<style>
+  html, body { margin:0; height:100%; overflow:hidden; background:#07090F; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
+  #app { position:fixed; inset:0; }
+  .overlay-demo {
+    position: fixed; left: 50%; top: 10px; transform: translateX(-50%);
+    padding: 10px 14px; background: rgba(10,12,20,.35); backdrop-filter: blur(6px);
+    border: 1px solid rgba(255,255,255,.08); border-radius: 12px; color: #D7E3FF;
+    font-weight: 600; letter-spacing: .2px; user-select: none; z-index: 5;
+  }
+  .credits {
+    position: fixed; right: 10px; bottom: 8px; color: #9fb0ff; font-size: 11px;
+    background: rgba(10,12,20,.25); padding: 6px 8px; border-radius: 8px; z-index: 5;
+    border: 1px solid rgba(255,255,255,.08)
+  }
+  .lil-gui { z-index: 10 !important; }
+  #err { position:fixed; left:8px; bottom:8px; z-index:99; color:#ffb4b4; background:rgba(40,0,0,.6); border:1px solid rgba(255,120,120,.4); padding:6px 8px; border-radius:8px; display:none; font-size:12px; max-width:60ch; }
+</style>
 </head>
 <body>
   <div id="app"></div>
   <div class="overlay-demo">Your UI/Scene elements go here — background stays strong & reactive</div>
   <div class="credits">Immersive FX Playground • WASD/Drag/Touch to stir the cosmos</div>
+  <div id="err"></div>
 
-  <!-- Three.js + Postprocessing + lil-gui (version pinned for stability) -->
-  <script type="module">
-    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js";
-    import { EffectComposer } from "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/postprocessing/EffectComposer.js";
-    import { RenderPass } from "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/postprocessing/RenderPass.js";
-    import { UnrealBloomPass } from "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/postprocessing/UnrealBloomPass.js";
-    import { ShaderPass } from "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/postprocessing/ShaderPass.js";
-    import GUI from "https://cdn.jsdelivr.net/npm/lil-gui@0.19/+esm";
+<script type="module">
+/* ======= SAFETY NET: quick error overlay ======= */
+const errBox = document.getElementById('err');
+window.addEventListener('error', (e)=>{ errBox.style.display='block'; errBox.textContent = (e?.error?.message||e.message||'Unknown error'); });
+window.addEventListener('unhandledrejection', (e)=>{ errBox.style.display='block'; errBox.textContent = (e?.reason?.message||String(e.reason)); });
 
-    // ------------------------------------------------------------
-    // Utility: pointer, time, resize, DPR caps
-    // ------------------------------------------------------------
-    const app = document.getElementById('app');
-    const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance", alpha: true, premultipliedAlpha: false });
-    const DPR = Math.min(window.devicePixelRatio || 1, 2.0); // cap for perf
-    renderer.setPixelRatio(DPR);
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.autoClear = false; // we manage clearing when layering
-    app.appendChild(renderer.domElement);
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js";
+import { EffectComposer } from "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { ShaderPass } from "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/postprocessing/ShaderPass.js";
+import GUI from "https://cdn.jsdelivr.net/npm/lil-gui@0.19/+esm";
 
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 2000);
-    camera.position.set(0, 0, 6);
+/* ======= Globals declared BEFORE handlers (avoid TDZ) ======= */
+const app = document.getElementById('app');
+const DPR = Math.min(window.devicePixelRatio || 1, 2.0);
+const renderer = new THREE.WebGLRenderer({ antialias:false, powerPreference:"high-performance", alpha:true, premultipliedAlpha:false });
+renderer.setPixelRatio(DPR);
+renderer.setSize(innerWidth, innerHeight);
+renderer.autoClear = false;
+app.appendChild(renderer.domElement);
 
-    // Low-overhead clock
-    const clock = new THREE.Clock();
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 2000);
+camera.position.set(0,0,6);
 
-    // Pointer state (NDC & world)
-    const pointer = { x: 0, y: 0, down: false, speed: 0, lastX: 0, lastY: 0, swirl: 0 };
-    const raycaster = new THREE.Raycaster();
-    const planeForRay = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+const clock = new THREE.Clock();
+const pointer = { x:0, y:0, down:false, speed:0, lastX:0, lastY:0, swirl:0 };
+const raycaster = new THREE.Raycaster();
+const planeForRay = new THREE.Plane(new THREE.Vector3(0,0,1), 0);
 
-    function setPointer(e, isTouch=false) {
-      const rect = renderer.domElement.getBoundingClientRect();
-      const cx = isTouch ? e.touches[0].clientX : e.clientX;
-      const cy = isTouch ? e.touches[0].clientY : e.clientY;
-      const nx = ((cx - rect.left) / rect.width) * 2 - 1;
-      const ny = -(((cy - rect.top) / rect.height) * 2 - 1);
-      const dx = nx - pointer.lastX, dy = ny - pointer.lastY;
-      pointer.speed = Math.min(Math.hypot(dx, dy) * 60, 2.5);
-      pointer.x = nx; pointer.y = ny;
-      pointer.lastX = nx; pointer.lastY = ny;
+let composer = null;
+let bloomPass = null;
+let distortionPass = null;
+let nebulaLayer = null;
+let fogLayer = null;
+let particles = null;
+
+/* ======= Utils ======= */
+function setPointer(e, isTouch=false) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  const cx = isTouch ? e.touches[0].clientX : e.clientX;
+  const cy = isTouch ? e.touches[0].clientY : e.clientY;
+  const nx = ((cx - rect.left) / rect.width) * 2 - 1;
+  const ny = -(((cy - rect.top) / rect.height) * 2 - 1);
+  const dx = nx - pointer.lastX, dy = ny - pointer.lastY;
+  pointer.speed = Math.min(Math.hypot(dx, dy) * 60, 2.5);
+  pointer.x = nx; pointer.y = ny; pointer.lastX = nx; pointer.lastY = ny;
+}
+function ndcToWorldZ0(nx, ny){
+  const origin = new THREE.Vector3();
+  raycaster.setFromCamera({x:nx, y:ny}, camera);
+  raycaster.ray.at((-raycaster.ray.origin.z)/raycaster.ray.direction.z, origin);
+  return origin;
+}
+
+/* ======= Distortion Shader Pass ======= */
+const DistortionShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uTime: { value: 0 },
+    uPointer: { value: new THREE.Vector3(0,0,0) },
+    uSpace: { value: new THREE.Vector4(0.75,0.35,0.12,0.0) },
+    uResolution: { value: new THREE.Vector2(innerWidth, innerHeight) },
+    uChromAb: { value: 0.002 },
+    uVignette: { value: 0.25 },
+    uGrain: { value: 0.08 },
+    uEnabled: { value: 1.0 },
+    uMode: { value: 1 },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.,1.); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform vec2 uResolution; uniform float uTime;
+    uniform vec3 uPointer; uniform vec4 uSpace; uniform float uChromAb,uVignette,uGrain,uEnabled; uniform int uMode;
+    varying vec2 vUv;
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+    float noise(vec2 p){ vec2 i=floor(p), f=fract(p); float a=hash(i), b=hash(i+vec2(1,0)), c=hash(i+vec2(0,1)), d=hash(i+vec2(1,1)); vec2 u=f*f*(3.-2.*f); return mix(a,b,u.x)+ (c-a)*u.y*(1.-u.x) + (d-b)*u.x*u.y; }
+    vec2 swirl(vec2 uv, vec2 c, float s){ vec2 p=uv-c; float r=length(p); float ang=s*exp(-r*6.); float si=sin(ang), co=cos(ang); mat2 m=mat2(co,-si,si,co); return c + m*p; }
+    void main(){
+      if(uEnabled<.5){ gl_FragColor = texture2D(tDiffuse, vUv); return; }
+      vec2 uv=vUv; vec2 p=0.5*(uPointer.xy+1.0); float n=noise(uv*8.0+uTime*0.2);
+      if(uMode==1){ vec2 d=uv-p; float r=max(0.0005, dot(d,d)); vec2 dir=normalize(d + 1e-6); float warp=uSpace.x*(1.0/r)*0.002 + uSpace.y*(n-0.5)*0.015; uv -= dir*warp; }
+      if(uMode==2){ uv = swirl(uv, p, uSpace.x*2.5 + (uPointer.z>0.5?0.5:0.0)); }
+      float ripple = uSpace.z * sin( (length(uv - p))*75.0 - uTime*4.0 ) * exp(-length(uv-p)*10.0) * 0.002;
+      uv += ripple * normalize(uv - p);
+      vec2 ca=(uv-0.5)*uChromAb;
+      vec4 col; col.r=texture2D(tDiffuse, uv+ca).r; col.g=texture2D(tDiffuse, uv).g; col.b=texture2D(tDiffuse, uv-ca).b; col.a=1.;
+      float d2=distance(uv, vec2(0.5)); float vig=smoothstep(0.95, max(0.2, 0.95 - uVignette), 1.0 - d2); col.rgb*=mix(0.88,1.0,vig);
+      float g=noise(uv*uResolution.xy+uTime*60.); col.rgb += (g-0.5)*uGrain; gl_FragColor = col;
     }
-    window.addEventListener("pointermove", (e)=> setPointer(e));
-    window.addEventListener("pointerdown", (e)=> { pointer.down = true; setPointer(e); });
-    window.addEventListener("pointerup",   ()=> { pointer.down = false; });
-    window.addEventListener("touchstart", (e)=> { pointer.down = true; setPointer(e, true); }, {passive:true});
-    window.addEventListener("touchmove",  (e)=> setPointer(e, true), {passive:true});
-    window.addEventListener("touchend",   ()=> { pointer.down = false; });
+  `
+};
 
-    function ndcToWorldZ0(nx, ny) {
-      // Project pointer to z=0 plane for world-space interactions
-      const origin = new THREE.Vector3();
-      const dir = new THREE.Vector3();
-      raycaster.setFromCamera({ x: nx, y: ny }, camera);
-      raycaster.ray.at((-raycaster.ray.origin.z) / raycaster.ray.direction.z, origin);
-      return origin;
-    }
-
-    window.addEventListener("resize", onResize);
-    function onResize() {
-      const w = window.innerWidth, h = window.innerHeight;
-      camera.aspect = w / h; camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
-      composer.setSize(w, h);
-      bloomPass.setSize(w, h);
-      distortionPass.uniforms.uResolution.value.set(w, h);
-      fogLayer?.onResize(w, h);
-      nebulaLayer?.onResize(w, h);
-    }
-
-    // ------------------------------------------------------------
-    // Postprocessing chain (bloom + grain + vignette + distortion)
-    // Distortion pass also doubles as "field" warp that reacts to pointer
-    // ------------------------------------------------------------
-    const composer = new EffectComposer(renderer);
-    const renderPass = new RenderPass(scene, camera);
-    composer.addPass(renderPass);
-
-    const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.8, 0.4, 0.85);
-    composer.addPass(bloomPass);
-
-    // Distortion (screen-space) + grain + vignette
-    const DistortionShader = {
-      uniforms: {
-        tDiffuse: { value: null },
-        uTime: { value: 0 },
-        uPointer: { value: new THREE.Vector3(0,0,0) }, // x,y in NDC, z = down?
-        uSpace: { value: new THREE.Vector4(0.75, 0.35, 0.12, 0.0)}, // warpStrength, noiseAmp, rippleAmp, reserved
-        uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-        uChromAb: { value: 0.002 },
-        uVignette: { value: 0.25 },
-        uGrain: { value: 0.08 },
-        uEnabled: { value: 1.0 },
-        uMode: { value: 0 }, // 0=off, 1=grav/magnetic, 2=swirl
-      },
-      vertexShader: `
-        varying vec2 vUv;
-        void main(){
-          vUv = uv;
-          gl_Position = vec4(position.xy, 0.0, 1.0);
+/* ======= Layer base & implementations (same as before) ======= */
+class Layer{ constructor(name){ this.name=name; this.enabled=true; } addTo(){} update(){} onResize(){} setEnabled(v){ this.enabled=v; } dispose(){} }
+/* Nebula */
+class NebulaLayer extends Layer{
+  constructor(){ super("Nebula");
+    const geo=new THREE.PlaneGeometry(2,2);
+    this.uniforms={ uTime:{value:0}, uColorA:{value:new THREE.Color("#6cc6ff")}, uColorB:{value:new THREE.Color("#d17bff")}, uColorC:{value:new THREE.Color("#ffe59e")},
+      uIntensity:{value:1.1}, uContrast:{value:1.15}, uSpeed:{value:0.12}, uScale:{value:1.8}, uOpacity:{value:0.95}, uPointer:{value:new THREE.Vector3()}, uLightScatter:{value:0.45}, uBlendMode:{value:1} };
+    const mat=new THREE.ShaderMaterial({ uniforms:this.uniforms, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending });
+    mat.vertexShader=`varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position,1.0); }`;
+    mat.fragmentShader=`
+      varying vec2 vUv; uniform float uTime,uIntensity,uContrast,uSpeed,uScale,uOpacity,uLightScatter; uniform vec3 uPointer,uColorA,uColorB,uColorC; uniform int uBlendMode;
+      float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453123); }
+      float noise(vec2 p){ vec2 i=floor(p), f=fract(p); float a=hash(i), b=hash(i+vec2(1,0)), c=hash(i+vec2(0,1)), d=hash(i+vec2(1,1)); vec2 u=f*f*(3.-2.*f); return mix(a,b,u.x)+ (c-a)*u.y*(1.-u.x) + (d-b)*u.x*u.y; }
+      float fbm(vec2 p){ float v=0., a=0.5; for(int i=0;i<6;i++){ v+=a*noise(p); p*=2.03; a*=0.5; } return v; }
+      vec3 blendScreen(vec3 a, vec3 b){ return 1. - (1.-a)*(1.-b); }
+      void main(){
+        vec2 uv=vUv*uScale; float t=uTime*uSpeed; vec2 p=uv+vec2(uPointer.x,-uPointer.y)*0.15;
+        float n=fbm(p+t); float m=fbm(p*1.7 - t*0.6 + vec2(5.3,2.1));
+        float c=pow(smoothstep(0.2,1.2,(n*0.6+m*0.8)*uIntensity), uContrast);
+        float d=distance(vUv, vec2(0.5))*2.; float scatter=exp(-d*3.)*uLightScatter;
+        vec3 base = mix(uColorA,uColorB,n); base = mix(base,uColorC,m*0.7); base *= c + scatter;
+        vec3 col = (uBlendMode==2) ? blendScreen(base, vec3(0.)) : base;
+        gl_FragColor = vec4(col, uOpacity);
+      }`;
+    this.mesh=new THREE.Mesh(geo, mat); this.mesh.frustumCulled=false;
+  }
+  addTo(s){ s.add(this.mesh); }
+  update(dt,t){ this.uniforms.uTime.value=t; this.uniforms.uPointer.value.set(pointer.x,pointer.y,pointer.down?1:0); }
+}
+/* Fog */
+class FogLayer extends Layer{
+  constructor(){ super("Fog");
+    const geo=new THREE.PlaneGeometry(2,2);
+    this.uniforms={ uTime:{value:0}, uPointer:{value:new THREE.Vector3()}, uColor:{value:new THREE.Color("#7aa3ff")},
+      uDensity:{value:0.6}, uSteps:{value:24}, uThickness:{value:1.0}, uAniso:{value:0.25}, uOpacity:{value:0.6}, uNoiseScale:{value:1.6}, uSpeed:{value:0.08} };
+    const mat=new THREE.ShaderMaterial({ uniforms:this.uniforms, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending });
+    mat.vertexShader=`varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position,1.0); }`;
+    mat.fragmentShader=`
+      varying vec2 vUv; uniform float uTime,uDensity,uThickness,uAniso,uOpacity,uNoiseScale,uSpeed; uniform int uSteps; uniform vec3 uPointer; uniform vec3 uColor;
+      float hash(vec3 p){ return fract(sin(dot(p, vec3(127.1,311.7,74.7))) * 43758.5453); }
+      float noise(vec3 x){ vec3 p=floor(x), f=fract(x); float a=hash(p),b=hash(p+vec3(1,0,0)),c=hash(p+vec3(0,1,0)),d=hash(p+vec3(1,1,0)), e=hash(p+vec3(0,0,1)),f1=hash(p+vec3(1,0,1)),g=hash(p+vec3(0,1,1)),h=hash(p+vec3(1,1,1)); vec3 u=f*f*(3.-2.*f); return mix(mix(mix(a,b,u.x), mix(c,d,u.x), u.y), mix(mix(e,f1,u.x), mix(g,h,u.x), u.y), u.z); }
+      void main(){
+        vec2 uv=vUv*2.-1.; vec3 ro=vec3(0.,0.,-2.); vec3 rd=normalize(vec3(uv,1.5));
+        float t=uTime*uSpeed; vec3 p=ro; float trans=1.; vec3 accum=vec3(0.); float stepLen=uThickness/float(max(uSteps,1));
+        for(int i=0;i<64;i++){ if(i>=uSteps) break;
+          float d=noise(p*uNoiseScale + vec3(0.,0.,t))*uDensity;
+          vec3 L=normalize(vec3(uPointer.x,uPointer.y,1.)); float mu=dot(rd,L);
+          float phase=(1.-uAniso*uAniso)/pow(1.+uAniso*uAniso - 2.*uAniso*mu, 1.5);
+          vec3 col=uColor * d * phase * 0.35; accum += trans * col * stepLen; trans *= exp(-d*stepLen*2.); p += rd * stepLen; if(trans<0.01) break;
         }
-      `,
-      fragmentShader: `
-        uniform sampler2D tDiffuse;
-        uniform vec2 uResolution;
-        uniform float uTime;
-        uniform vec3 uPointer;
-        uniform vec4 uSpace;
-        uniform float uChromAb, uVignette, uGrain, uEnabled;
-        uniform int uMode;
-        varying vec2 vUv;
+        gl_FragColor = vec4(accum, uOpacity);
+      }`;
+    this.mesh=new THREE.Mesh(geo, mat); this.mesh.frustumCulled=false;
+  }
+  addTo(s){ s.add(this.mesh); }
+  update(dt,t){ this.uniforms.uTime.value=t; this.uniforms.uPointer.value.set(pointer.x,pointer.y,pointer.down?1:0); }
+}
+/* Particles */
+class ParticleLayer extends Layer{
+  constructor({count=90000}={}){ super("Particles");
+    const positions=new Float32Array(count*3); const seeds=new Float32Array(count*4);
+    for(let i=0;i<count;i++){ positions[i*3+0]=(Math.random()*2-1)*3.; positions[i*3+1]=(Math.random()*2-1)*2.; positions[i*3+2]=(Math.random()*2-1)*0.2; seeds[i*4+0]=Math.random()*1000.; seeds[i*4+1]=Math.random()*1000.; seeds[i*4+2]=Math.random()*1000.; seeds[i*4+3]=Math.random(); }
+    const geo=new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(positions,3)); geo.setAttribute('aSeed', new THREE.BufferAttribute(seeds,4));
+    this.uniforms={ uTime:{value:0}, uPointerWorld:{value:new THREE.Vector3()}, uPointer:{value:new THREE.Vector3()}, uColor1:{value:new THREE.Color("#80d0ff")},
+      uColor2:{value:new THREE.Color("#ff86ff")}, uColor3:{value:new THREE.Color("#ffd27e")}, uSize:{value:1.6}, uOpacity:{value:0.95}, uNoiseAmp:{value:1.2},
+      uNoiseFreq:{value:0.8}, uSpeed:{value:1.0}, uAttract:{value:-0.45}, uSwirl:{value:0.35} };
+    const mat=new THREE.ShaderMaterial({ uniforms:this.uniforms, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending });
+    mat.vertexShader=`
+      uniform float uTime,uNoiseAmp,uNoiseFreq,uSpeed,uAttract,uSwirl,uSize; uniform vec3 uPointerWorld; attribute vec4 aSeed;
+      varying float vMix; float hash(vec3 p){ return fract(sin(dot(p, vec3(127.1,311.7,74.7))) * 43758.5453); }
+      float noise(vec3 x){ vec3 p=floor(x), f=fract(x); float a=hash(p),b=hash(p+vec3(1,0,0)),c=hash(p+vec3(0,1,0)),d=hash(p+vec3(1,1,0)), e=hash(p+vec3(0,0,1)),f1=hash(p+vec3(1,0,1)),g=hash(p+vec3(0,1,1)),h=hash(p+vec3(1,1,1)); vec3 u=f*f*(3.-2.*f); return mix(mix(mix(a,b,u.x), mix(c,d,u.x), u.y), mix(mix(e,f1,u.x), mix(g,h,u.x), u.y), u.z); }
+      vec3 curl(vec3 p){ float e=0.1; float n1=noise(p+vec3(0,e,0)) - noise(p-vec3(0,e,0)); float n2=noise(p+vec3(0,0,e)) - noise(p-vec3(0,0,e)); float n3=noise(p+vec3(e,0,0)) - noise(p-vec3(e,0,0)); return normalize(vec3(n2-n3, n3-n1, n1-n2)); }
+      void main(){ vec3 pos=position; float t=uTime*0.2*uSpeed; vec3 flow=curl(vec3(pos*uNoiseFreq + aSeed.xyz + t))*uNoiseAmp; pos+=flow;
+        vec3 dir=uPointerWorld - pos; float dist=max(0.025, length(dir)); vec3 f=normalize(dir) * uAttract / (dist*dist);
+        vec3 tang=normalize(cross(vec3(0.,0.,1.), dir + 1e-4)); f += tang * uSwirl / max(0.4, dist); pos += f;
+        vMix = fract(aSeed.x + t * 0.1);
+        vec4 mv=modelViewMatrix*vec4(pos,1.0); gl_Position=projectionMatrix*mv; gl_PointSize=(uSize + aSeed.w*1.5) * (300.0 / -mv.z);
+      }`;
+    mat.fragmentShader=`
+      uniform vec3 uColor1,uColor2,uColor3; uniform float uOpacity; varying float vMix;
+      void main(){ vec2 uv=gl_PointCoord-0.5; float d=dot(uv,uv); float alpha=smoothstep(0.25,0.0,d)*uOpacity; vec3 c=mix(uColor1,uColor2,vMix); c=mix(c,uColor3,smoothstep(0.6,1.0,vMix)); gl_FragColor=vec4(c,alpha); }`;
+    this.points=new THREE.Points(geo, mat); this.points.frustumCulled=false;
+  }
+  addTo(s){ s.add(this.points); }
+  update(dt,t){ this.uniforms.uTime.value=t; const w=ndcToWorldZ0(pointer.x,pointer.y); this.uniforms.uPointerWorld.value.copy(w); this.uniforms.uPointer.value.set(pointer.x,pointer.y,pointer.down?1:0); }
+}
 
-        // Simplex-ish hash
-        float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-        float noise(vec2 p){
-          vec2 i = floor(p), f = fract(p);
-          float a = hash(i), b = hash(i+vec2(1,0)), c=hash(i+vec2(0,1)), d=hash(i+vec2(1,1));
-          vec2 u = f*f*(3.0-2.0*f);
-          return mix(a,b,u.x)+ (c-a)*u.y*(1.0-u.x) + (d-b)*u.x*u.y;
-        }
-        vec2 swirl(vec2 uv, vec2 c, float strength){
-          vec2 p = uv - c;
-          float r = length(p);
-          float ang = strength * exp(-r*6.0);
-          float s = sin(ang), cs = cos(ang);
-          mat2 m = mat2(cs,-s,s,cs);
-          return c + m * p;
-        }
+/* ======= Build post stack AFTER everything is defined ======= */
+function buildComposer(){
+  composer = new EffectComposer(renderer);
+  const renderPass = new RenderPass(scene, camera);
+  composer.addPass(renderPass);
+  bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.9, 0.4, 0.4);
+  composer.addPass(bloomPass);
+  distortionPass = new ShaderPass(DistortionShader);
+  composer.addPass(distortionPass);
+}
 
-        void main(){
-          if(uEnabled < 0.5){ gl_FragColor = texture2D(tDiffuse, vUv); return; }
+/* ======= Controls ======= */
+const gui = new GUI({ title:"FX Control Panel" });
+const params = {
+  background:"#07090F", clearAlpha:0.0, pixelRatio:DPR,
+  bloomStrength:0.9, bloomRadius:0.4, bloomThreshold:0.4,
+  fieldEnabled:true, fieldMode:"Magnetic", warpStrength:1.05, noiseAmp:0.35, rippleAmp:0.14, chromAb:0.0025, vignette:0.27, grain:0.07,
+  nebulaEnabled:true, nebulaIntensity:1.25, nebulaContrast:1.2, nebulaSpeed:0.15, nebulaScale:2.2, nebulaOpacity:0.95, nebulaScatter:0.55, nebulaBlend:"Add",
+  nebulaColorA:"#6cc6ff", nebulaColorB:"#d17bff", nebulaColorC:"#ffe59e",
+  fogEnabled:true, fogDensity:0.75, fogSteps:28, fogThickness:1.0, fogAniso:0.25, fogOpacity:0.65, fogNoiseScale:1.8, fogSpeed:0.1, fogColor:"#7aa3ff",
+  particlesEnabled:true, pSize:1.8, pOpacity:0.96, pNoiseAmp:1.4, pNoiseFreq:0.9, pSpeed:1.1, pAttract:-0.55, pSwirl:0.55,
+};
+function wireGUI(){
+  const gGlobal=gui.addFolder("Global");
+  gGlobal.addColor(params,"background").onChange(v=>renderer.setClearColor(new THREE.Color(v), params.clearAlpha));
+  gGlobal.add(params,"clearAlpha",0,1,0.01).onChange(v=>renderer.setClearAlpha(v));
+  gGlobal.add(params,"pixelRatio",0.5,2,0.1).onChange(v=>{ renderer.setPixelRatio(v); onResize(); });
+  const gBloom=gGlobal.addFolder("Bloom");
+  gBloom.add(params,"bloomStrength",0,2,0.01).onChange(v=>bloomPass.strength=v);
+  gBloom.add(params,"bloomRadius",0,1.5,0.01).onChange(v=>bloomPass.radius=v);
+  gBloom.add(params,"bloomThreshold",0,1,0.01).onChange(v=>bloomPass.threshold=v);
 
-          vec2 uv = vUv;
-          // Pointer in UV space
-          vec2 p = 0.5 * (uPointer.xy + 1.0);
-          // Base noise flow for organic movement
-          float n = noise(uv*8.0 + uTime*0.2);
-          // Field warp: grav/magnetic style
-          if(uMode == 1){
-            vec2 d = uv - p;
-            float r = max(0.0005, dot(d,d));
-            float invr = 1.0/r;
-            vec2 dir = normalize(d + 1e-6);
-            float warp = uSpace.x * invr * 0.002 + uSpace.y* (n-0.5)*0.015;
-            uv -= dir * warp;
-          }
-          // Swirl mode
-          if(uMode == 2){
-            uv = swirl(uv, p, uSpace.x*2.5 + (uPointer.z>0.5?0.5:0.0));
-          }
-          // Ripple (embedded in both modes via additive offset)
-          float ripple = uSpace.z * sin( (length(uv - p))*75.0 - uTime*4.0 ) * exp(-length(uv-p)*10.0) * 0.002;
-          uv += ripple * normalize(uv - p);
+  const gField=gui.addFolder("Field Distortion");
+  gField.add(params,"fieldEnabled").onChange(v=>distortionPass.uniforms.uEnabled.value=v?1:0);
+  gField.add(params,"fieldMode",["Magnetic","Swirl"]).onChange(v=>distortionPass.uniforms.uMode.value=(v==="Magnetic")?1:2);
+  gField.add(params,"warpStrength",0,2.5,0.01).onChange(v=>distortionPass.uniforms.uSpace.value.x=v);
+  gField.add(params,"noiseAmp",0,1,0.01).onChange(v=>distortionPass.uniforms.uSpace.value.y=v);
+  gField.add(params,"rippleAmp",0,1,0.01).onChange(v=>distortionPass.uniforms.uSpace.value.z=v);
+  gField.add(params,"chromAb",0,0.01,0.0005).onChange(v=>distortionPass.uniforms.uChromAb.value=v);
+  gField.add(params,"vignette",0,0.8,0.01).onChange(v=>distortionPass.uniforms.uVignette.value=v);
+  gField.add(params,"grain",0,0.2,0.005).onChange(v=>distortionPass.uniforms.uGrain.value=v);
 
-          // Chromatic aberration
-          vec2 ca = (uv - 0.5) * uChromAb;
-          vec4 col;
-          col.r = texture2D(tDiffuse, uv + ca).r;
-          col.g = texture2D(tDiffuse, uv).g;
-          col.b = texture2D(tDiffuse, uv - ca).b;
-          col.a = 1.0;
+  const gNebula=gui.addFolder("Nebula"); gNebula.add(params,"nebulaEnabled").onChange(v=>nebulaLayer.setEnabled(v));
+  gNebula.add(params,"nebulaIntensity",0.2,2.5,0.01).onChange(v=>nebulaLayer.uniforms.uIntensity.value=v);
+  gNebula.add(params,"nebulaContrast",0.5,2,0.01).onChange(v=>nebulaLayer.uniforms.uContrast.value=v);
+  gNebula.add(params,"nebulaSpeed",0,1,0.005).onChange(v=>nebulaLayer.uniforms.uSpeed.value=v);
+  gNebula.add(params,"nebulaScale",0.2,4,0.01).onChange(v=>nebulaLayer.uniforms.uScale.value=v);
+  gNebula.add(params,"nebulaOpacity",0,1,0.01).onChange(v=>nebulaLayer.uniforms.uOpacity.value=v);
+  gNebula.add(params,"nebulaScatter",0,1,0.01).onChange(v=>nebulaLayer.uniforms.uLightScatter.value=v);
+  gNebula.add(params,"nebulaBlend",["Normal","Add","Screen"]).onChange(v=>{
+    nebulaLayer.uniforms.uBlendMode.value=(v==="Normal")?0:(v==="Add")?1:2;
+    nebulaLayer.mesh.material.blending=(v==="Normal")?THREE.NormalBlending:THREE.AdditiveBlending;
+  });
+  gNebula.addColor(params,"nebulaColorA").onChange(v=>nebulaLayer.uniforms.uColorA.value.set(v));
+  gNebula.addColor(params,"nebulaColorB").onChange(v=>nebulaLayer.uniforms.uColorB.value.set(v));
+  gNebula.addColor(params,"nebulaColorC").onChange(v=>nebulaLayer.uniforms.uColorC.value.set(v));
 
-          // Vignette
-          float d2 = distance(uv, vec2(0.5));
-          float vig = smoothstep(0.95, max(0.2, 0.95 - uVignette), 1.0 - d2);
-          col.rgb *= mix(0.88, 1.0, vig);
+  const gFog=gui.addFolder("Volumetric Fog");
+  gFog.add(params,"fogEnabled").onChange(v=>fogLayer.setEnabled(v));
+  gFog.addColor(params,"fogColor").onChange(v=>fogLayer.uniforms.uColor.value.set(v));
+  gFog.add(params,"fogDensity",0,2,0.01).onChange(v=>fogLayer.uniforms.uDensity.value=v);
+  gFog.add(params,"fogSteps",4,64,1).onChange(v=>fogLayer.uniforms.uSteps.value=v);
+  gFog.add(params,"fogThickness",0.2,3.5,0.01).onChange(v=>fogLayer.uniforms.uThickness.value=v);
+  gFog.add(params,"fogAniso",0,0.9,0.01).onChange(v=>fogLayer.uniforms.uAniso.value=v);
+  gFog.add(params,"fogOpacity",0,1,0.01).onChange(v=>fogLayer.uniforms.uOpacity.value=v);
+  gFog.add(params,"fogNoiseScale",0.2,4,0.01).onChange(v=>fogLayer.uniforms.uNoiseScale.value=v);
+  gFog.add(params,"fogSpeed",0,0.6,0.005).onChange(v=>fogLayer.uniforms.uSpeed.value=v);
 
-          // Film grain
-          float g = noise(uv * uResolution.xy + uTime*60.0);
-          col.rgb += (g - 0.5) * uGrain;
+  const gP=gui.addFolder("Particle Swarm");
+  gP.add(params,"particlesEnabled").onChange(v=>particles.setEnabled(v));
+  gP.add(params,"pSize",0.2,4,0.05).onChange(v=>particles.uniforms.uSize.value=v);
+  gP.add(params,"pOpacity",0,1,0.01).onChange(v=>particles.uniforms.uOpacity.value=v);
+  gP.add(params,"pNoiseAmp",0,3,0.01).onChange(v=>particles.uniforms.uNoiseAmp.value=v);
+  gP.add(params,"pNoiseFreq",0.1,3,0.01).onChange(v=>particles.uniforms.uNoiseFreq.value=v);
+  gP.add(params,"pSpeed",0,2.5,0.01).onChange(v=>particles.uniforms.uSpeed.value=v);
+  gP.add(params,"pAttract",-2,2,0.01).onChange(v=>particles.uniforms.uAttract.value=v);
+  gP.add(params,"pSwirl",0,2,0.01).onChange(v=>particles.uniforms.uSwirl.value=v);
+  gP.addColor(params,"pColor1").onChange(v=>particles.uniforms.uColor1.value.set(v));
+  gP.addColor(params,"pColor2").onChange(v=>particles.uniforms.uColor2.value.set(v));
+  gP.addColor(params,"pColor3").onChange(v=>particles.uniforms.uColor3.value.set(v));
+}
 
-          gl_FragColor = col;
-        }
-      `
-    };
-    const distortionPass = new ShaderPass(DistortionShader);
-    composer.addPass(distortionPass);
+/* ======= Init everything in safe order ======= */
+function init(){
+  // layers first
+  nebulaLayer = new NebulaLayer(); nebulaLayer.addTo(scene);
+  particles   = new ParticleLayer({count:90000}); particles.addTo(scene);
+  fogLayer    = new FogLayer(); fogLayer.addTo(scene);
 
-    // ------------------------------------------------------------
-    // Layer Base Class
-    // ------------------------------------------------------------
-    class Layer {
-      constructor(name) { this.name = name; this.enabled = true; }
-      addTo(scene) {}
-      update(dt, t) {}
-      onResize(w, h) {}
-      setEnabled(v){ this.enabled = v; }
-      dispose() {}
-    }
+  // post stack
+  buildComposer();
 
-    // ------------------------------------------------------------
-    // Nebula Layer (procedural cosmic light patterns, FBM on a full-screen quad)
-    // ------------------------------------------------------------
-    class NebulaLayer extends Layer {
-      constructor() {
-        super("Nebula");
-        const geo = new THREE.PlaneGeometry(2, 2);
-        this.uniforms = {
-          uTime: { value: 0 },
-          uColorA: { value: new THREE.Color("#6cc6ff") },
-          uColorB: { value: new THREE.Color("#d17bff") },
-          uColorC: { value: new THREE.Color("#ffe59e") },
-          uIntensity: { value: 1.1 },
-          uContrast: { value: 1.15 },
-          uSpeed: { value: 0.12 },
-          uScale: { value: 1.8 },
-          uOpacity: { value: 0.95 },
-          uPointer: { value: new THREE.Vector3(0,0,0) },
-          uLightScatter: { value: 0.45 },
-          uBlendMode: { value: 1 }, // 0 normal, 1 add, 2 screen
-        };
-        const mat = new THREE.ShaderMaterial({
-          uniforms: this.uniforms,
-          transparent: true,
-          depthWrite: false,
-          blending: THREE.AdditiveBlending
-        });
-        mat.vertexShader = `
-          varying vec2 vUv;
-          void main(){ vUv = uv; gl_Position = vec4(position,1.0); }
-        `;
-        mat.fragmentShader = `
-          varying vec2 vUv;
-          uniform float uTime, uIntensity, uContrast, uSpeed, uScale, uOpacity, uLightScatter;
-          uniform vec3 uPointer;
-          uniform vec3 uColorA, uColorB, uColorC;
-          uniform int uBlendMode;
+  // initial renderer state
+  renderer.setClearColor(new THREE.Color(params.background), params.clearAlpha);
+  bloomPass.strength=params.bloomStrength; bloomPass.radius=params.bloomRadius; bloomPass.threshold=params.bloomThreshold;
+  distortionPass.uniforms.uChromAb.value=params.chromAb;
+  distortionPass.uniforms.uVignette.value=params.vignette;
+  distortionPass.uniforms.uGrain.value=params.grain;
+  distortionPass.uniforms.uSpace.value.set(params.warpStrength, params.noiseAmp, params.rippleAmp, 0);
+  distortionPass.uniforms.uEnabled.value = params.fieldEnabled ? 1 : 0;
+  distortionPass.uniforms.uMode.value = (params.fieldMode==="Magnetic")?1:2;
 
-          float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453123); }
-          float noise(vec2 p){
-            vec2 i=floor(p), f=fract(p);
-            float a=hash(i), b=hash(i+vec2(1,0)), c=hash(i+vec2(0,1)), d=hash(i+vec2(1,1));
-            vec2 u=f*f*(3.0-2.0*f);
-            return mix(a,b,u.x)+ (c-a)*u.y*(1.0-u.x) + (d-b)*u.x*u.y;
-          }
-          float fbm(vec2 p){
-            float v=0.0, a=0.5;
-            for(int i=0;i<6;i++){ v+=a*noise(p); p*=2.03; a*=0.5; }
-            return v;
-          }
-          vec3 blendScreen(vec3 a, vec3 b){ return 1. - (1.-a)*(1.-b); }
+  // input AFTER everything exists
+  addInputs();
+  wireGUI();
 
-          void main(){
-            vec2 uv = vUv * uScale;
-            float t = uTime * uSpeed;
-            // Parallax shift by pointer to add interactivity
-            vec2 p = uv + vec2(uPointer.x, -uPointer.y)*0.15;
+  // render loop
+  animate();
+}
+function addInputs(){
+  window.addEventListener("pointermove", (e)=> setPointer(e));
+  window.addEventListener("pointerdown", (e)=> { pointer.down=true; setPointer(e); });
+  window.addEventListener("pointerup", ()=> { pointer.down=false; });
+  window.addEventListener("touchstart",(e)=>{ pointer.down=true; setPointer(e,true); }, {passive:true});
+  window.addEventListener("touchmove", (e)=> setPointer(e,true), {passive:true});
+  window.addEventListener("touchend", ()=> { pointer.down=false; });
 
-            float n = fbm(p + t);
-            float m = fbm(p*1.7 - t*0.6 + vec2(5.3,2.1));
-            float c = pow(smoothstep(0.2, 1.2, (n*0.6 + m*0.8) * uIntensity), uContrast);
+  // resize added LAST (so composer/layers exist)
+  window.addEventListener("resize", onResize);
+}
+function onResize(){
+  const w=innerWidth, h=innerHeight;
+  camera.aspect=w/h; camera.updateProjectionMatrix();
+  renderer.setSize(w,h);
+  if (composer) composer.setSize(w,h);
+  if (bloomPass) bloomPass.setSize(w,h);
+  if (distortionPass) distortionPass.uniforms.uResolution.value.set(w,h);
+}
+function animate(){
+  const dt=Math.min(0.033, clock.getDelta());
+  const t=clock.elapsedTime;
+  const pointerVec=new THREE.Vector3(pointer.x,pointer.y,pointer.down?1:0);
+  distortionPass.uniforms.uTime.value=t; distortionPass.uniforms.uPointer.value.copy(pointerVec);
 
-            // Light scattering bloom-ish core
-            float d = distance(vUv, vec2(0.5)) * 2.0;
-            float scatter = exp(-d*3.0) * uLightScatter;
+  nebulaLayer.mesh.visible = nebulaLayer.enabled; if (nebulaLayer.enabled) nebulaLayer.update(dt,t);
+  particles.points.visible = particles.enabled;   if (particles.enabled)   particles.update(dt,t);
+  fogLayer.mesh.visible    = fogLayer.enabled;    if (fogLayer.enabled)    fogLayer.update(dt,t);
 
-            vec3 base = mix(uColorA, uColorB, n);
-            base = mix(base, uColorC, m*0.7);
-            base *= c + scatter;
+  renderer.clear();
+  composer.render();
+  requestAnimationFrame(animate);
+}
 
-            vec3 col = base;
-            if(uBlendMode==2) col = blendScreen(base, vec3(0.0));
-            gl_FragColor = vec4(col, uOpacity);
-          }
-        `;
-        this.mesh = new THREE.Mesh(geo, mat);
-        this.mesh.frustumCulled = false;
-      }
-      addTo(scene){ scene.add(this.mesh); }
-      update(dt, t){
-        this.uniforms.uTime.value = t;
-        this.uniforms.uPointer.value.set(pointer.x, pointer.y, pointer.down?1:0);
-      }
-      onResize(){}
-    }
-
-    // ------------------------------------------------------------
-    // Volumetric Fog/Smoke (ray-marched procedural)
-    // Adjustable step count & resolution via uniform multipliers
-    // ------------------------------------------------------------
-    class FogLayer extends Layer {
-      constructor() {
-        super("Fog");
-        const geo = new THREE.PlaneGeometry(2, 2);
-        this.uniforms = {
-          uTime: { value: 0 },
-          uPointer: { value: new THREE.Vector3() },
-          uColor: { value: new THREE.Color("#7aa3ff") },
-          uDensity: { value: 0.6 },
-          uSteps: { value: 24 }, // ray steps
-          uThickness: { value: 1.0 },
-          uAniso: { value: 0.25 }, // forward scattering factor
-          uOpacity: { value: 0.6 },
-          uNoiseScale: { value: 1.6 },
-          uSpeed: { value: 0.08 },
-          uResolutionScale: { value: 1.0 } // 1.0 full res, <1.0 for perf
-        };
-        const mat = new THREE.ShaderMaterial({
-          uniforms: this.uniforms,
-          transparent: true,
-          depthWrite: false,
-          blending: THREE.AdditiveBlending
-        });
-        mat.vertexShader = `varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position,1.0); }`;
-        mat.fragmentShader = `
-          varying vec2 vUv;
-          uniform float uTime, uDensity, uThickness, uAniso, uOpacity, uNoiseScale, uSpeed;
-          uniform int uSteps;
-          uniform vec3 uPointer;
-          uniform vec3 uColor;
-          // Fast value noise
-          float hash(vec3 p){ return fract(sin(dot(p, vec3(127.1,311.7, 74.7))) * 43758.5453); }
-          float noise(vec3 x){
-            vec3 p = floor(x), f = fract(x);
-            float n = dot(p, vec3(1.0, 57.0, 113.0));
-            float a=hash(p), b=hash(p+vec3(1,0,0)), c=hash(p+vec3(0,1,0)), d=hash(p+vec3(1,1,0));
-            float e=hash(p+vec3(0,0,1)), f1=hash(p+vec3(1,0,1)), g=hash(p+vec3(0,1,1)), h=hash(p+vec3(1,1,1));
-            vec3 u = f*f*(3.0-2.0*f);
-            return mix(mix(mix(a,b,u.x), mix(c,d,u.x), u.y),
-                       mix(mix(e,f1,u.x), mix(g,h,u.x), u.y), u.z);
-          }
-          void main(){
-            vec2 uv = vUv * 2.0 - 1.0;
-            uv.x *= 1.0; // aspect handled by camera
-            // Ray origin/direction in a simple view space
-            vec3 ro = vec3(0.0, 0.0, -2.0);
-            vec3 rd = normalize(vec3(uv, 1.5));
-            // Jitter steps for noise dither
-            float t = uTime*uSpeed;
-            vec3 p = ro;
-            float trans = 1.0;
-            vec3 accum = vec3(0.0);
-            float stepLen = uThickness / float(max(uSteps,1));
-            for(int i=0;i<64;i++){
-              if(i>=uSteps) break;
-              float d = noise(p*uNoiseScale + vec3(0.0,0.0,t))*uDensity;
-              // Henyey-Greenstein-ish phase towards pointer direction
-              vec3 L = normalize(vec3(uPointer.x, uPointer.y, 1.0));
-              float mu = dot(rd, L);
-              float phase = (1.0 - uAniso*uAniso) / pow(1.0 + uAniso*uAniso - 2.0*uAniso*mu, 1.5);
-              vec3 col = uColor * d * phase * 0.35;
-              accum += trans * col * stepLen;
-              trans *= exp(-d * stepLen * 2.0);
-              p += rd * stepLen;
-              if(trans < 0.01) break;
-            }
-            vec3 outc = accum;
-            gl_FragColor = vec4(outc, uOpacity);
-          }
-        `;
-        this.mesh = new THREE.Mesh(geo, mat);
-        this.mesh.frustumCulled = false;
-      }
-      addTo(scene){ scene.add(this.mesh); }
-      update(dt, t){
-        this.uniforms.uTime.value = t;
-        this.uniforms.uPointer.value.set(pointer.x, pointer.y, pointer.down?1:0);
-      }
-      onResize(){}
-    }
-
-    // ------------------------------------------------------------
-    // Particle Swarm Layer (GPU-friendly Points + noise flow + pointer forces)
-    // ------------------------------------------------------------
-    class ParticleLayer extends Layer {
-      constructor({ count = 80000 } = {}) {
-        super("Particles");
-        this.count = count;
-
-        const positions = new Float32Array(count * 3);
-        const seeds = new Float32Array(count * 4);
-        for (let i=0; i<count; i++){
-          positions[i*3+0] = (Math.random()*2-1) * 3.0;
-          positions[i*3+1] = (Math.random()*2-1) * 2.0;
-          positions[i*3+2] = (Math.random()*2-1) * 0.2;
-          seeds[i*4+0] = Math.random()*1000.0; // seed
-          seeds[i*4+1] = Math.random()*1000.0;
-          seeds[i*4+2] = Math.random()*1000.0;
-          seeds[i*4+3] = Math.random()*1.0;    // size jitter
-        }
-
-        const geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geo.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 4));
-
-        this.uniforms = {
-          uTime: { value: 0 },
-          uPointerWorld: { value: new THREE.Vector3() },
-          uPointer: { value: new THREE.Vector3() }, // NDC + down
-          uColor1: { value: new THREE.Color("#80d0ff") },
-          uColor2: { value: new THREE.Color("#ff86ff") },
-          uColor3: { value: new THREE.Color("#ffd27e") },
-          uSize: { value: 1.6 },
-          uOpacity: { value: 0.95 },
-          uNoiseAmp: { value: 1.2 },
-          uNoiseFreq: { value: 0.8 },
-          uSpeed: { value: 1.0 },
-          uAttract: { value: 0.0 }, // negative to repel
-          uSwirl: { value: 0.0 },
-          uBlendMode: { value: 1 }, // 0 normal, 1 additive
-        };
-        const mat = new THREE.ShaderMaterial({
-          uniforms: this.uniforms,
-          transparent: true,
-          depthWrite: false,
-          blending: THREE.AdditiveBlending
-        });
-        mat.vertexShader = `
-          uniform float uTime, uNoiseAmp, uNoiseFreq, uSpeed, uAttract, uSwirl, uSize;
-          uniform vec3 uPointerWorld;
-          attribute vec4 aSeed;
-          varying float vLife;
-          varying float vMix;
-          // Simple 3D noise (value noise)
-          float hash(vec3 p){ return fract(sin(dot(p, vec3(127.1,311.7,74.7))) * 43758.5453); }
-          float noise(vec3 x){
-            vec3 p=floor(x), f=fract(x);
-            float n=dot(p, vec3(1.,57.,113.));
-            float a=hash(p), b=hash(p+vec3(1,0,0)), c=hash(p+vec3(0,1,0)), d=hash(p+vec3(1,1,0));
-            float e=hash(p+vec3(0,0,1)), f1=hash(p+vec3(1,0,1)), g=hash(p+vec3(0,1,1)), h=hash(p+vec3(1,1,1));
-            vec3 u = f*f*(3.0-2.0*f);
-            return mix(mix(mix(a,b,u.x), mix(c,d,u.x), u.y),
-                       mix(mix(e,f1,u.x), mix(g,h,u.x), u.y), u.z);
-          }
-          vec3 curl(vec3 p){
-            float e=0.1;
-            float n1 = noise(p + vec3(0,e,0)) - noise(p - vec3(0,e,0));
-            float n2 = noise(p + vec3(0,0,e)) - noise(p - vec3(0,0,e));
-            float n3 = noise(p + vec3(e,0,0)) - noise(p - vec3(e,0,0));
-            return normalize(vec3(n2 - n3, n3 - n1, n1 - n2));
-          }
-          void main(){
-            vec3 pos = position;
-            float t = uTime * 0.2 * uSpeed;
-            vec3 flow = curl(vec3(pos* uNoiseFreq + aSeed.xyz + t)) * uNoiseAmp;
-            pos += flow;
-
-            // Pointer force
-            vec3 dir = uPointerWorld - pos;
-            float dist = max(0.025, length(dir));
-            vec3 f = normalize(dir) * uAttract / (dist*dist);
-            // Swirl around pointer
-            vec3 axis = normalize(vec3(0.0,0.0,1.0));
-            vec3 tang = normalize(cross(axis, dir + 1e-4));
-            f += tang * uSwirl / max(0.4, dist);
-
-            pos += f;
-
-            vLife = fract(aSeed.x + t * 0.1);
-            vMix = smoothstep(0.0, 1.0, vLife);
-
-            vec4 mvPosition = modelViewMatrix * vec4(pos,1.0);
-            gl_Position = projectionMatrix * mvPosition;
-            gl_PointSize = (uSize + aSeed.w*1.5) * (300.0 / -mvPosition.z);
-          }
-        `;
-        mat.fragmentShader = `
-          uniform vec3 uColor1, uColor2, uColor3;
-          uniform float uOpacity;
-          varying float vLife;
-          varying float vMix;
-          void main(){
-            vec2 uv = gl_PointCoord - 0.5;
-            float d = dot(uv,uv);
-            float alpha = smoothstep(0.25, 0.0, d) * uOpacity;
-            vec3 c = mix(uColor1, uColor2, vMix);
-            c = mix(c, uColor3, smoothstep(0.6, 1.0, vMix));
-            gl_FragColor = vec4(c, alpha);
-          }
-        `;
-        this.points = new THREE.Points(geo, mat);
-        this.points.frustumCulled = false;
-      }
-      addTo(scene){ scene.add(this.points); }
-      update(dt, t){
-        this.uniforms.uTime.value = t;
-        const world = ndcToWorldZ0(pointer.x, pointer.y);
-        this.uniforms.uPointerWorld.value.copy(world);
-        this.uniforms.uPointer.value.set(pointer.x, pointer.y, pointer.down?1:0);
-      }
-      onResize(){}
-    }
-
-    // ------------------------------------------------------------
-    // Scene Setup & Layer Instances
-    // ------------------------------------------------------------
-    const nebulaLayer = new NebulaLayer();
-    const fogLayer = new FogLayer();
-    const particles = new ParticleLayer({ count: 90000 });
-
-    nebulaLayer.addTo(scene);
-    particles.addTo(scene);
-    fogLayer.addTo(scene);
-
-    // ------------------------------------------------------------
-    // Controls (lil-gui)
-    // ------------------------------------------------------------
-    const gui = new GUI({ title: "FX Control Panel" });
-    gui.domElement.style.userSelect = "none";
-
-    const params = {
-      // Global
-      background: "#07090F",
-      clearAlpha: 0.0,
-      pixelRatio: DPR,
-      bloomStrength: 0.9,
-      bloomRadius: 0.4,
-      bloomThreshold: 0.4,
-
-      // Distortion
-      fieldEnabled: true,
-      fieldMode: "Magnetic",
-      warpStrength: 0.75,
-      noiseAmp: 0.35,
-      rippleAmp: 0.12,
-      chromAb: 0.002,
-      vignette: 0.25,
-      grain: 0.06,
-
-      // Nebula
-      nebulaEnabled: true,
-      nebulaIntensity: 1.1,
-      nebulaContrast: 1.15,
-      nebulaSpeed: 0.12,
-      nebulaScale: 1.8,
-      nebulaOpacity: 0.95,
-      nebulaScatter: 0.45,
-      nebulaBlend: "Add",
-      nebulaColorA: "#6cc6ff",
-      nebulaColorB: "#d17bff",
-      nebulaColorC: "#ffe59e",
-
-      // Fog
-      fogEnabled: true,
-      fogDensity: 0.6,
-      fogSteps: 24,
-      fogThickness: 1.0,
-      fogAniso: 0.25,
-      fogOpacity: 0.6,
-      fogNoiseScale: 1.6,
-      fogSpeed: 0.08,
-      fogColor: "#7aa3ff",
-
-      // Particles
-      particlesEnabled: true,
-      particleCountNote: "(fixed at init for perf)",
-      pSize: 1.7,
-      pOpacity: 0.96,
-      pNoiseAmp: 1.2,
-      pNoiseFreq: 0.8,
-      pSpeed: 1.0,
-      pAttract: -0.45, // negative = repel
-      pSwirl: 0.35,
-      pColor1: "#80d0ff",
-      pColor2: "#ff86ff",
-      pColor3: "#ffd27e",
-
-      // Presets
-      preset: "Cosmic Storm"
-    };
-
-    // Global
-    const gGlobal = gui.addFolder("Global");
-    gGlobal.addColor(params, "background").onChange(v=> { renderer.setClearColor(new THREE.Color(v), params.clearAlpha); });
-    gGlobal.add(params, "clearAlpha", 0, 1, 0.01).onChange(v=> { renderer.setClearAlpha(v); });
-    gGlobal.add(params, "pixelRatio", 0.5, 2, 0.1).onChange(v=> { renderer.setPixelRatio(v); onResize(); });
-    const gBloom = gGlobal.addFolder("Bloom");
-    gBloom.add(params, "bloomStrength", 0, 2, 0.01).onChange(v=> bloomPass.strength = v);
-    gBloom.add(params, "bloomRadius", 0, 1.5, 0.01).onChange(v=> bloomPass.radius = v);
-    gBloom.add(params, "bloomThreshold", 0, 1, 0.01).onChange(v=> bloomPass.threshold = v);
-
-    // Distortion / Field
-    const gField = gui.addFolder("Field Distortion (Screen-space)");
-    gField.add(params, "fieldEnabled").onChange(v=> { distortionPass.uniforms.uEnabled.value = v ? 1 : 0; });
-    gField.add(params, "fieldMode", ["Magnetic", "Swirl"]).onChange(v=> distortionPass.uniforms.uMode.value = (v==="Magnetic")?1:2);
-    gField.add(params, "warpStrength", 0.0, 2.5, 0.01).onChange(v=> distortionPass.uniforms.uSpace.value.x = v);
-    gField.add(params, "noiseAmp", 0.0, 1.0, 0.01).onChange(v=> distortionPass.uniforms.uSpace.value.y = v);
-    gField.add(params, "rippleAmp", 0.0, 1.0, 0.01).onChange(v=> distortionPass.uniforms.uSpace.value.z = v);
-    gField.add(params, "chromAb", 0.0, 0.01, 0.0005).onChange(v=> distortionPass.uniforms.uChromAb.value = v);
-    gField.add(params, "vignette", 0.0, 0.8, 0.01).onChange(v=> distortionPass.uniforms.uVignette.value = v);
-    gField.add(params, "grain", 0.0, 0.2, 0.005).onChange(v=> distortionPass.uniforms.uGrain.value = v);
-
-    // Nebula
-    const gNebula = gui.addFolder("Nebula Layer");
-    gNebula.add(params, "nebulaEnabled").onChange(v=> nebulaLayer.setEnabled(v));
-    gNebula.add(params, "nebulaIntensity", 0.2, 2.5, 0.01).onChange(v=> nebulaLayer.uniforms.uIntensity.value = v);
-    gNebula.add(params, "nebulaContrast", 0.5, 2.0, 0.01).onChange(v=> nebulaLayer.uniforms.uContrast.value = v);
-    gNebula.add(params, "nebulaSpeed", 0.0, 1.0, 0.005).onChange(v=> nebulaLayer.uniforms.uSpeed.value = v);
-    gNebula.add(params, "nebulaScale", 0.2, 4.0, 0.01).onChange(v=> nebulaLayer.uniforms.uScale.value = v);
-    gNebula.add(params, "nebulaOpacity", 0.0, 1.0, 0.01).onChange(v=> nebulaLayer.uniforms.uOpacity.value = v);
-    gNebula.add(params, "nebulaScatter", 0.0, 1.0, 0.01).onChange(v=> nebulaLayer.uniforms.uLightScatter.value = v);
-    gNebula.add(params, "nebulaBlend", ["Normal", "Add", "Screen"]).onChange(v=>{
-      nebulaLayer.uniforms.uBlendMode.value = (v==="Normal")?0:(v==="Add")?1:2;
-      nebulaLayer.mesh.material.blending = (v==="Normal")?THREE.NormalBlending:THREE.AdditiveBlending;
-    });
-    gNebula.addColor(params, "nebulaColorA").onChange(v=> nebulaLayer.uniforms.uColorA.value.set(v));
-    gNebula.addColor(params, "nebulaColorB").onChange(v=> nebulaLayer.uniforms.uColorB.value.set(v));
-    gNebula.addColor(params, "nebulaColorC").onChange(v=> nebulaLayer.uniforms.uColorC.value.set(v));
-
-    // Fog
-    const gFog = gui.addFolder("Volumetric Fog/Smoke");
-    gFog.add(params, "fogEnabled").onChange(v=> fogLayer.setEnabled(v));
-    gFog.addColor(params, "fogColor").onChange(v=> fogLayer.uniforms.uColor.value.set(v));
-    gFog.add(params, "fogDensity", 0.0, 2.0, 0.01).onChange(v=> fogLayer.uniforms.uDensity.value = v);
-    gFog.add(params, "fogSteps", 4, 64, 1).onChange(v=> fogLayer.uniforms.uSteps.value = v);
-    gFog.add(params, "fogThickness", 0.2, 3.5, 0.01).onChange(v=> fogLayer.uniforms.uThickness.value = v);
-    gFog.add(params, "fogAniso", 0.0, 0.9, 0.01).onChange(v=> fogLayer.uniforms.uAniso.value = v);
-    gFog.add(params, "fogOpacity", 0.0, 1.0, 0.01).onChange(v=> fogLayer.uniforms.uOpacity.value = v);
-    gFog.add(params, "fogNoiseScale", 0.2, 4.0, 0.01).onChange(v=> fogLayer.uniforms.uNoiseScale.value = v);
-    gFog.add(params, "fogSpeed", 0.0, 0.6, 0.005).onChange(v=> fogLayer.uniforms.uSpeed.value = v);
-
-    // Particles
-    const gP = gui.addFolder("Particle Swarm");
-    gP.add(params, "particlesEnabled").onChange(v=> particles.setEnabled(v));
-    gP.add(params, "particleCountNote");
-    gP.add(params, "pSize", 0.2, 4.0, 0.05).onChange(v=> particles.uniforms.uSize.value = v);
-    gP.add(params, "pOpacity", 0.0, 1.0, 0.01).onChange(v=> particles.uniforms.uOpacity.value = v);
-    gP.add(params, "pNoiseAmp", 0.0, 3.0, 0.01).onChange(v=> particles.uniforms.uNoiseAmp.value = v);
-    gP.add(params, "pNoiseFreq", 0.1, 3.0, 0.01).onChange(v=> particles.uniforms.uNoiseFreq.value = v);
-    gP.add(params, "pSpeed", 0.0, 2.5, 0.01).onChange(v=> particles.uniforms.uSpeed.value = v);
-    gP.add(params, "pAttract", -2.0, 2.0, 0.01).onChange(v=> particles.uniforms.uAttract.value = v);
-    gP.add(params, "pSwirl", 0.0, 2.0, 0.01).onChange(v=> particles.uniforms.uSwirl.value = v);
-    gP.addColor(params, "pColor1").onChange(v=> particles.uniforms.uColor1.value.set(v));
-    gP.addColor(params, "pColor2").onChange(v=> particles.uniforms.uColor2.value.set(v));
-    gP.addColor(params, "pColor3").onChange(v=> particles.uniforms.uColor3.value.set(v));
-
-    // Presets (starter moods)
-    const gPresets = gui.addFolder("Presets");
-    const presets = {
-      "Cosmic Storm": () => {
-        Object.assign(params, {
-          nebulaEnabled: true, fogEnabled: true, particlesEnabled: true,
-          nebulaIntensity: 1.25, nebulaContrast: 1.2, nebulaSpeed: 0.15, nebulaScale: 2.2, nebulaOpacity: 0.95, nebulaScatter: 0.55,
-          fogDensity: 0.75, fogSteps: 28, fogOpacity: 0.65, fogNoiseScale: 1.8, fogSpeed: 0.1,
-          pSize: 1.8, pNoiseAmp: 1.4, pNoiseFreq: 0.9, pSpeed: 1.1, pAttract: -0.55, pSwirl: 0.55,
-          bloomStrength: 1.05, bloomRadius: 0.45, bloomThreshold: 0.42,
-          fieldEnabled: true, fieldMode: "Magnetic", warpStrength: 1.05, noiseAmp: 0.35, rippleAmp: 0.14, chromAb: 0.0025, vignette: 0.27, grain: 0.07
-        });
-        // trigger updates
-        for (const f of gui.controllersRecursive()) f.updateDisplay();
-      },
-      "Nebula Dreams": () => {
-        Object.assign(params, {
-          nebulaEnabled: true, fogEnabled: false, particlesEnabled: true,
-          nebulaIntensity: 1.6, nebulaContrast: 1.05, nebulaSpeed: 0.08, nebulaScale: 2.6, nebulaOpacity: 0.88, nebulaScatter: 0.4,
-          pSize: 1.4, pNoiseAmp: 0.9, pNoiseFreq: 0.7, pSpeed: 0.7, pAttract: 0.2, pSwirl: 0.25,
-          bloomStrength: 0.85, bloomRadius: 0.35, bloomThreshold: 0.38,
-          fieldEnabled: true, fieldMode: "Swirl", warpStrength: 0.55, noiseAmp: 0.2, rippleAmp: 0.08, chromAb: 0.0015, vignette: 0.22, grain: 0.05
-        });
-        for (const f of gui.controllersRecursive()) f.updateDisplay();
-      },
-      "Event Horizon": () => {
-        Object.assign(params, {
-          nebulaEnabled: false, fogEnabled: true, particlesEnabled: true,
-          fogDensity: 1.1, fogSteps: 32, fogOpacity: 0.75, fogNoiseScale: 1.2, fogSpeed: 0.12,
-          pSize: 1.2, pNoiseAmp: 1.8, pNoiseFreq: 1.35, pSpeed: 1.3, pAttract: 0.8, pSwirl: 0.9,
-          bloomStrength: 1.2, bloomRadius: 0.5, bloomThreshold: 0.35,
-          fieldEnabled: true, fieldMode: "Magnetic", warpStrength: 1.35, noiseAmp: 0.4, rippleAmp: 0.2, chromAb: 0.003, vignette: 0.32, grain: 0.09
-        });
-        for (const f of gui.controllersRecursive()) f.updateDisplay();
-      }
-    };
-    gPresets.add(params, "preset", Object.keys(presets)).onChange(name => presets[name]());
-
-    // Initialize renderer state from params
-    renderer.setClearColor(new THREE.Color(params.background), params.clearAlpha);
-    bloomPass.strength = params.bloomStrength;
-    bloomPass.radius = params.bloomRadius;
-    bloomPass.threshold = params.bloomThreshold;
-    distortionPass.uniforms.uChromAb.value = params.chromAb;
-    distortionPass.uniforms.uVignette.value = params.vignette;
-    distortionPass.uniforms.uGrain.value = params.grain;
-    distortionPass.uniforms.uSpace.value.set(params.warpStrength, params.noiseAmp, params.rippleAmp, 0);
-    distortionPass.uniforms.uEnabled.value = params.fieldEnabled ? 1 : 0;
-    distortionPass.uniforms.uMode.value = (params.fieldMode==="Magnetic")?1:2;
-    // Kick a default preset
-    presets["Cosmic Storm"]();
-
-    // ------------------------------------------------------------
-    // Animation Loop
-    // ------------------------------------------------------------
-    function animate() {
-      const dt = Math.min(0.033, clock.getDelta());
-      const t = clock.elapsedTime;
-
-      // Update uniforms that are time/pointer based
-      const pointerVec = new THREE.Vector3(pointer.x, pointer.y, pointer.down?1:0);
-      distortionPass.uniforms.uTime.value = t;
-      distortionPass.uniforms.uPointer.value.copy(pointerVec);
-
-      if (nebulaLayer.enabled) nebulaLayer.update(dt, t);
-      if (particles.enabled) particles.update(dt, t);
-      if (fogLayer.enabled) fogLayer.update(dt, t);
-
-      // ORDER: background nebula -> particles -> fog -> postfx
-      renderer.clear();
-      // We render via composer with a single scene; layer enabling done via mesh.visible
-      nebulaLayer.mesh.visible = nebulaLayer.enabled;
-      particles.points.visible = particles.enabled;
-      fogLayer.mesh.visible = fogLayer.enabled;
-
-      composer.render();
-      requestAnimationFrame(animate);
-    }
-    animate();
-
-    // ------------------------------------------------------------
-    // Accessibility: keyboard nudge to swirl/attract
-    // ------------------------------------------------------------
-    window.addEventListener("keydown", (e)=>{
-      if(e.key === " ") {
-        params.fieldMode = (params.fieldMode==="Magnetic")?"Swirl":"Magnetic";
-        distortionPass.uniforms.uMode.value = (params.fieldMode==="Magnetic")?1:2;
-        for (const f of gui.controllersRecursive()) f.updateDisplay();
-      }
-      if(e.key.toLowerCase()==="w") params.pAttract += 0.1;
-      if(e.key.toLowerCase()==="s") params.pAttract -= 0.1;
-      if(e.key.toLowerCase()==="a") params.pSwirl -= 0.05;
-      if(e.key.toLowerCase()==="d") params.pSwirl += 0.05;
-      particles.uniforms.uAttract.value = params.pAttract;
-      particles.uniforms.uSwirl.value = params.pSwirl;
-    });
-
-    // ------------------------------------------------------------
-    // Clean up if needed (hot reload scenarios)
-    // ------------------------------------------------------------
-    window.addEventListener("unload", ()=>{
-      renderer.dispose();
-      nebulaLayer.dispose?.();
-      fogLayer.dispose?.();
-      particles.dispose?.();
-      gui.destroy();
-    });
-  </script>
+init();
+</script>
 </body>
 </html>
